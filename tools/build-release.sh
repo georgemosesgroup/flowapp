@@ -62,9 +62,22 @@ cp -R "$SRC_APP" "$DST_APP"
 # No identity passed → ad-hoc sign (works on this Mac + any tester
 # willing to right-click → Open). A real Developer ID identity
 # unlocks Gatekeeper and is a prereq for notarization.
+#
+# Hardened Runtime nuance: --options=runtime turns on library
+# validation, which at load time refuses any framework whose Team ID
+# doesn't match the process's Team ID. For ad-hoc signing (no Team
+# ID) that produces dyld errors at launch on testers' Macs ("mapping
+# process and mapped file (non-platform) have different Team IDs"),
+# even after a strip-quarantine. So we only enable Hardened Runtime
+# when we have a real identity — notarization needs it, testers'
+# ad-hoc launches break without skipping it.
 IDENTITY="${SIGNING_IDENTITY:--}"
 echo "▶︎ codesign identity: $IDENTITY"
-codesign --deep --force --options=runtime \
+SIGN_FLAGS=(--deep --force)
+if [[ "$IDENTITY" != "-" ]]; then
+    SIGN_FLAGS+=(--options=runtime)
+fi
+codesign "${SIGN_FLAGS[@]}" \
     --entitlements "$REPO_ROOT/macos/Runner/Release.entitlements" \
     --sign "$IDENTITY" \
     "$DST_APP"

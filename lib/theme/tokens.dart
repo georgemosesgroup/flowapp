@@ -124,6 +124,19 @@ class FlowTokens {
   static const Duration durBase = Duration(milliseconds: 220);
   static const Duration durSlow = Duration(milliseconds: 340);
 
+  /// Longer, gentler duration for bigger-footprint transitions — sidebar
+  /// collapse/expand is the main customer. 420 ms is at the upper edge
+  /// of what still feels "responsive" to a click while giving the motion
+  /// room to breathe.
+  static const Duration durSidebar = Duration(milliseconds: 420);
+
+  /// Material-3 "emphasized" easing: eases in slowly, accelerates
+  /// through the middle, decelerates into rest. More "physical" than a
+  /// straight ease-out and Google's recommended curve for layout-changing
+  /// transitions. Used everywhere the sidebar collapse/expand animates.
+  /// See: https://m3.material.io/styles/motion/easing-and-duration/tokens-specs#emphasized
+  static const Curve easeSidebar = Cubic(0.05, 0.7, 0.1, 1.0);
+
   /// Apple's standard ease — accelerates gently, then glides to rest.
   static const Curve easeStandard = Cubic(0.22, 1.0, 0.36, 1.0);
 

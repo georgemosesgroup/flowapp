@@ -200,12 +200,16 @@ echo "  ✓ .env updated"
 SSHEOF
 fi
 
-# ── 5. Restart backend so it picks up the new env ──────────────────
-# Backend reads DESKTOP_LATEST_* once at startup (os.Getenv in the
-# handler); a restart is enough, no full `up -d` needed.
+# ── 5. Recreate backend so it picks up the new env ─────────────────
+# `docker compose restart` does NOT re-read the host .env file — it
+# just restarts the existing container with the env values that were
+# captured when it was first `up`'d. For DESKTOP_LATEST_* to reach
+# os.Getenv we need a full recreate (`up -d <svc>` re-resolves env
+# from .env and rebuilds the container config). No rebuild flag
+# needed — the image itself is unchanged.
 echo ""
-echo "▶︎ restarting backend"
-run_remote "cd $SERVER_REPO && docker compose -f docker-compose.prod.yml restart backend"
+echo "▶︎ recreating backend"
+run_remote "cd $SERVER_REPO && docker compose -f docker-compose.prod.yml up -d backend"
 
 # Give it a beat to come back — the restart is ~2-3s, then the first
 # /api/v1/desktop/latest hit needs to pass through cf → caddy → nginx.

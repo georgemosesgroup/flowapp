@@ -67,7 +67,22 @@ class UpdateInfo {
 ///   is macOS-specific (the DMG on the other end isn't useful in a
 ///   browser), so we skip the whole thing under `kIsWeb`.
 class UpdateService extends ChangeNotifier {
-  UpdateService(this._auth);
+  UpdateService(this._auth) {
+    // Single-instance assumption: app_shell creates this once after
+    // login and holds it for the process lifetime. Static handle lets
+    // the native menu bar ("Check for Updates…" in the Flow menu)
+    // trigger a probe without having to thread the service down
+    // through widget callbacks. If we ever legitimately need multiple
+    // instances (multi-account, tests), swap this for a proper
+    // InheritedWidget / provider lookup.
+    current = this;
+  }
+
+  /// Global handle for code paths that can't easily receive the
+  /// service via widget tree (PlatformMenuBar callbacks, dock menu,
+  /// notification-click handlers). `null` before login / after
+  /// dispose — callers must null-check.
+  static UpdateService? current;
 
   final AuthService _auth;
   Timer? _timer;
@@ -230,6 +245,7 @@ class UpdateService extends ChangeNotifier {
   void dispose() {
     _timer?.cancel();
     _timer = null;
+    if (identical(current, this)) current = null;
     super.dispose();
   }
 }

@@ -91,6 +91,16 @@ jobs:
           chmod 600 ~/.ssh/known_hosts
 
       # ──────────────────────────────────────────────────────────
+      # create-dmg produces a DMG window with a custom layout
+      # (Flow.app icon on the left, /Applications drop target on the
+      # right) instead of hdiutil's default plain file listing.
+      # macos-latest runners already have Homebrew, so the install
+      # is ~2s and cached across runs via Homebrew's own cellar.
+      # ──────────────────────────────────────────────────────────
+      - name: Install create-dmg
+        run: brew install create-dmg
+
+      # ──────────────────────────────────────────────────────────
       # Build — ad-hoc signed today. Flip to SIGNING_IDENTITY +
       # NOTARIZE=1 once we store an Apple Developer ID cert + the
       # notarytool keychain profile as runner secrets. See the

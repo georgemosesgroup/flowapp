@@ -12,6 +12,7 @@ import 'services/speech_service.dart';
 import 'services/storage_service.dart';
 import 'theme/app_theme.dart';
 import 'theme/tokens.dart';
+import 'widgets/flow_menu_bar.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -55,6 +56,9 @@ enum AppScreen { loading, accountPicker, login, permissions, main }
 class _FlowAppState extends State<FlowApp> {
   final AuthService _authService = AuthService();
   final SpeechService _speechService = SpeechService();
+  // Shared with the native macOS menu bar so "About Flow" can resolve
+  // a BuildContext for showAboutDialog without a per-screen hook.
+  final GlobalKey<NavigatorState> _navigatorKey = GlobalKey<NavigatorState>();
   AppScreen _screen = AppScreen.loading;
   String? _prefilledEmail;
 
@@ -175,19 +179,27 @@ class _FlowAppState extends State<FlowApp> {
     // Rebuild the whole MaterialApp whenever the theme controller fires
     // (system brightness shift or user-selected mode change). This swaps
     // the ThemeData and the entire widget tree picks up the new palette.
+    //
+    // FlowMenuBar wraps MaterialApp so the native macOS menu bar is
+    // always present, independent of which AppScreen is on screen. On
+    // non-macOS platforms PlatformMenuBar is a no-op pass-through.
     return ListenableBuilder(
       listenable: FlowThemeController.instance,
-      builder: (context, _) => MaterialApp(
-        title: 'Flow',
-        debugShowCheckedModeBanner: false,
-        theme: FlowTheme.build(brightness: Brightness.light),
-        darkTheme: FlowTheme.build(brightness: Brightness.dark),
-        themeMode: switch (FlowThemeController.instance.mode) {
-          FlowThemeMode.light => ThemeMode.light,
-          FlowThemeMode.dark => ThemeMode.dark,
-          FlowThemeMode.system => ThemeMode.system,
-        },
-        home: _routeForScreen(),
+      builder: (context, _) => FlowMenuBar(
+        navigatorKey: _navigatorKey,
+        child: MaterialApp(
+          title: 'Flow',
+          debugShowCheckedModeBanner: false,
+          navigatorKey: _navigatorKey,
+          theme: FlowTheme.build(brightness: Brightness.light),
+          darkTheme: FlowTheme.build(brightness: Brightness.dark),
+          themeMode: switch (FlowThemeController.instance.mode) {
+            FlowThemeMode.light => ThemeMode.light,
+            FlowThemeMode.dark => ThemeMode.dark,
+            FlowThemeMode.system => ThemeMode.system,
+          },
+          home: _routeForScreen(),
+        ),
       ),
     );
   }

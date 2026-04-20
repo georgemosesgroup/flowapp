@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleIdentifier</key>
+	<string>com.voiceassistant.voiceAssistantDesktop</string>
+	<key>CFBundleName</key>
+	<string>Voice Assistant</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>Voice Assistant uses speech recognition to convert your voice to text.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Voice Assistant needs microphone access for dictation.</string>
+</dict>
+</plist>

@@ -1,9 +1,16 @@
-# Flow Desktop
+# voice_assistant_desktop
 
-macOS dictation app. Landing page + release artifacts.
+A new Flutter project.
 
-- **Install:** https://downloads.flow.mosesdev.com
-- **Changelog:** [Releases](https://github.com/georgemosesgroup/flowapp/releases)
+## Getting Started
 
-Source of truth lives in the private monorepo on Bitbucket;
-`main` here is a release mirror force-pushed by CI on every tag.
+This project is a starting point for a Flutter application.
+
+A few resources to get you started if this is your first Flutter project:
+
+- [Lab: Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
+- [Cookbook: Useful Flutter samples](https://docs.flutter.dev/cookbook)
+
+For help getting started with Flutter development, view the
+[online documentation](https://docs.flutter.dev/), which offers tutorials,
+samples, guidance on mobile development, and a full API reference.

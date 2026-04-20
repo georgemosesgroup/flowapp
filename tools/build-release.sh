@@ -117,7 +117,7 @@ echo "  DMG : $DIST/$DMG_NAME"
 echo "  ZIP : $DIST/$ZIP_NAME"
 echo ""
 if [[ "$IDENTITY" == "-" ]]; then
-    cat <<EOF
+    cat <<'EOF'
 ⚠︎  This is an AD-HOC build (no Apple Developer identity).
     On a tester's Mac, Gatekeeper will refuse to open it with a
     "Flow is damaged / cannot be opened" message. They can bypass

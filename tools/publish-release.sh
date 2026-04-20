@@ -84,15 +84,19 @@ echo "  public: $PUBLIC_BASE"
 run_remote "mkdir -p $RELEASE_DIR"
 
 # ── 2. Upload ──────────────────────────────────────────────────────
-# `--chmod=F644` — nginx runs as its own uid inside the container,
+# `--chmod=ugo=r,u+w` — nginx runs as its own uid inside the container,
 # so files must be world-readable regardless of the uid we rsync as.
+# Avoid the `F644` prefix syntax: macOS's bundled rsync is still
+# 2.6.9 (2006) which rejects it, and GH's macos-latest runners use
+# that one. `ugo=r,u+w` is two plain --chmod clauses (set all read +
+# add owner-write) that give 644 on files and work everywhere.
 # `--partial --progress` — a dropped connection mid-upload resumes
 # instead of losing the whole 50 MB.
 if [[ "$DRY_RUN" == "1" ]]; then
     echo "  [dry-run] rsync $DMG $ZIP $RELEASE_HOST:$RELEASE_DIR/"
 else
     rsync -avz --partial --progress \
-        --chmod=F644 \
+        --chmod=ugo=r,u+w \
         "$DMG" "$ZIP" \
         "$RELEASE_HOST:$RELEASE_DIR/"
 fi

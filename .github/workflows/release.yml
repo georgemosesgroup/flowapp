@@ -1,0 +1,155 @@
+# ──────────────────────────────────────────────────────────────────
+# THIS FILE IS A TEMPLATE.
+#
+# Copy it into the `georgemosesgroup/flowapp` repo at
+#   .github/workflows/release.yml
+# (that repo, not the monorepo). It stays there — Bitbucket Pipelines'
+# sync step preserves `.github/` explicitly so your next mirror push
+# doesn't wipe it.
+#
+# Bootstrap (one-time, from your Mac):
+#   git clone git@github.com:georgemosesgroup/flowapp.git /tmp/flowapp
+#   cd /tmp/flowapp
+#   mkdir -p .github/workflows
+#   cp /path/to/monorepo/desktop/tools/ci/flowapp-release.yml \
+#      .github/workflows/release.yml
+#   git add .github && git commit -m "ci: release workflow" && git push
+#
+# See desktop/tools/ci/README.md for the full setup walkthrough.
+# ──────────────────────────────────────────────────────────────────
+
+name: Release Flow Desktop
+
+on:
+  push:
+    tags:
+      - 'desktop-v*'
+  # Manual re-run hatch — lets you rebuild a specific tag from the
+  # Actions tab without pushing a new one (e.g. when a prior run
+  # failed on a transient rsync timeout).
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag to rebuild (defaults to latest desktop-v*)'
+        required: false
+
+jobs:
+  release:
+    runs-on: macos-latest
+    timeout-minutes: 30
+    # Permissions: only what softprops/action-gh-release needs to
+    # attach the DMG/ZIP to a Release object on this repo. Everything
+    # else is locked down.
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Full history so the git describe/tag-message parsing below
+          # has the tag object available.
+          fetch-depth: 0
+          ref: ${{ inputs.tag || github.ref }}
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.38.6'
+          channel: 'stable'
+          cache: true
+
+      - name: Cache pub packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.pub-cache
+          key: ${{ runner.os }}-pub-${{ hashFiles('**/pubspec.lock') }}
+          restore-keys: ${{ runner.os }}-pub-
+
+      - name: Cache CocoaPods
+        uses: actions/cache@v4
+        with:
+          path: macos/Pods
+          key: ${{ runner.os }}-pods-${{ hashFiles('**/Podfile.lock') }}
+          restore-keys: ${{ runner.os }}-pods-
+
+      - name: Flutter pub get
+        run: flutter pub get
+
+      # ──────────────────────────────────────────────────────────
+      # SSH setup: rsync to downloads.flow.mosesdev.com + ssh to
+      # prod for the env patch / backend restart.
+      # ──────────────────────────────────────────────────────────
+      - name: Configure SSH
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          SSH_KNOWN_HOSTS: ${{ secrets.SSH_KNOWN_HOSTS }}
+        run: |
+          mkdir -p ~/.ssh
+          printf '%s\n' "$SSH_PRIVATE_KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          printf '%s\n' "$SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+
+      # ──────────────────────────────────────────────────────────
+      # Build — ad-hoc signed today. Flip to SIGNING_IDENTITY +
+      # NOTARIZE=1 once we store an Apple Developer ID cert + the
+      # notarytool keychain profile as runner secrets. See the
+      # commented hints in the `env:` block below.
+      # ──────────────────────────────────────────────────────────
+      - name: Build signed DMG
+        env:
+          # Uncomment these 3 once the Apple Developer cert is in the
+          # runner keychain (via the Apple-Actions/import-codesign-certs
+          # action) and the notarytool profile is provisioned.
+          # SIGNING_IDENTITY: ${{ secrets.SIGNING_IDENTITY }}
+          # NOTARIZE: '1'
+          # NOTARY_PROFILE: flow-release
+          NOTARIZE: '0'
+        run: tools/build-release.sh
+
+      # ──────────────────────────────────────────────────────────
+      # Publish — rsync + prod .env patch + backend restart + verify.
+      # NOTES is lifted from the annotated tag body (what
+      # `release.sh --ci` writes) so the in-app UpdateBanner picks
+      # up whatever the release author typed.
+      # ──────────────────────────────────────────────────────────
+      - name: Extract tag notes
+        id: tag_notes
+        run: |
+          ref="${{ inputs.tag || github.ref_name }}"
+          # Strip leading "refs/tags/" if present.
+          tag="${ref#refs/tags/}"
+          # The annotated tag body — first blank line onward.
+          notes="$(git tag -l --format='%(contents:body)' "$tag" | head -c 280 | tr -d '\r')"
+          [[ -z "$notes" ]] && notes="Flow release $tag"
+          echo "notes<<EOF" >> "$GITHUB_OUTPUT"
+          echo "$notes"     >> "$GITHUB_OUTPUT"
+          echo "EOF"        >> "$GITHUB_OUTPUT"
+
+      - name: Publish to downloads.flow.mosesdev.com
+        env:
+          RELEASE_HOST: ${{ secrets.RELEASE_HOST }}
+          # Optional — override the default `/srv/flow-downloads`
+          # and `/opt/flowapp` paths on prod by adding matching repo
+          # variables in GH and referencing them here as
+          # `vars.RELEASE_DIR` etc.
+          NOTES: ${{ steps.tag_notes.outputs.notes }}
+        run: tools/publish-release.sh
+
+      # ──────────────────────────────────────────────────────────
+      # Bonus: attach the DMG/ZIP to a GitHub Release so users who
+      # land on the flowapp repo can download from there too.
+      # The authoritative URL for the in-app UpdateBanner stays
+      # downloads.flow.mosesdev.com — this is just a convenience
+      # mirror + auto-generated changelog surface.
+      # ──────────────────────────────────────────────────────────
+      - name: Attach artifacts to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ inputs.tag || github.ref_name }}
+          name: Flow ${{ inputs.tag || github.ref_name }}
+          body: ${{ steps.tag_notes.outputs.notes }}
+          files: |
+            dist/Flow-*.dmg
+            dist/Flow-*.zip
+          fail_on_unmatched_files: true

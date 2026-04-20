@@ -920,44 +920,53 @@ class _UndoBanner extends StatelessWidget {
 class _EmptyState extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
-    return FlowCard(
-      padding: const EdgeInsets.symmetric(
-        horizontal: FlowTokens.space24,
-        vertical: FlowTokens.space32,
-      ),
-      child: SizedBox(
-        width: double.infinity,
-        child: Column(
-          children: [
-            Container(
-              width: 48,
-              height: 48,
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                  colors: [
-                    FlowTokens.accent.withValues(alpha: 0.18),
-                    FlowTokens.systemBlue.withValues(alpha: 0.18),
-                  ],
+    // Transparent, no card — sits directly over the native vibrancy
+    // backdrop so the empty-state block reads the same as empty states
+    // on Dictionary / Snippets / Scratchpad. The prior FlowCard
+    // wrapper painted an opaque white panel that fought with the rest
+    // of the translucent chrome.
+    return Center(
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 380),
+        child: Padding(
+          padding: const EdgeInsets.all(FlowTokens.space32),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 64,
+                height: 64,
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [
+                      FlowTokens.accent.withValues(alpha: 0.25),
+                      FlowTokens.accent.withValues(alpha: 0.10),
+                    ],
+                  ),
+                  borderRadius: BorderRadius.circular(FlowTokens.radiusLg),
+                  border: Border.all(
+                    color: FlowTokens.accent.withValues(alpha: 0.25),
+                    width: 0.5,
+                  ),
                 ),
-                borderRadius: BorderRadius.circular(FlowTokens.radiusMd),
+                child: const Icon(
+                  Icons.graphic_eq_rounded,
+                  size: 28,
+                  color: FlowTokens.accent,
+                ),
               ),
-              child: const Icon(
-                Icons.graphic_eq_rounded,
-                size: 22,
-                color: FlowTokens.accent,
+              const SizedBox(height: FlowTokens.space16),
+              Text('No dictations yet', style: FlowType.headline),
+              const SizedBox(height: FlowTokens.space4),
+              Text(
+                'Hold ^ Ctrl anywhere to dictate your first note.',
+                style: FlowType.caption,
+                textAlign: TextAlign.center,
               ),
-            ),
-            const SizedBox(height: FlowTokens.space16),
-            Text('No dictations yet', style: FlowType.headline),
-            const SizedBox(height: FlowTokens.space4),
-            Text(
-              'Hold ^ Ctrl anywhere to dictate your first note.',
-              style: FlowType.caption,
-              textAlign: TextAlign.center,
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -1023,22 +1032,22 @@ class _RecentStickyHeader extends SliverPersistentHeaderDelegate {
     // The band fades in as soon as `overlapsContent` flips — chips
     // themselves never animate, so their position doesn't shift.
     final isDark = brightness == Brightness.dark;
-    // Band tint should look like the top Home-toolbar, which is
-    // transparent and composes down to whatever the native vibrancy
-    // layer paints (.sidebar material + 62% black in dark /
-    // 5% white in light). In dark that composite lands around
-    // ~7% brightness — `bgSurfaceOpaque` (0x111114) matches.
-    // In light the composite reads as a ~92% light-gray (NOT pure
-    // white), so `bgSurfaceOpaque` (0xFFFFFFFF) was popping bright
-    // against the grayer header. System gray 5-ish (0xECECEE)
-    // lands on the same gray plane as the native composite.
+    // Band tint has to match what the TRANSPARENT top-header composes
+    // down to (native NSVisualEffectView.sidebar + tintView). The
+    // previous values pinned to `bgSurfaceOpaque` on both sides —
+    // which is pure chrome-base (0xFFFFFFFF light / 0xFF111114 dark)
+    // — read noticeably darker than the live header in BOTH themes,
+    // because the live header never actually paints those endpoints:
+    // it shows the .sidebar material (mid-gray) tinted by 5% white or
+    // 62% black, which lands closer to macOS systemGray6.
+    //
+    // These values are picked to match that native composite so the
+    // band visually fuses with the header and the bottom hairline is
+    // the only cue that the bar is pinned. Tuned by eye against the
+    // screenshots the user shared.
     final bandTint = isDark
-        ? FlowTokens.bgSurfaceOpaque // 0xFF111114 in dark
-        : const Color(0xFFD1D1D6); // ~82% gray — the native
-                                    // .sidebar aqua + 5% white
-                                    // composite lands near macOS
-                                    // systemGray5 under most
-                                    // wallpapers
+        ? const Color(0xFF1D1D1F) // dark: matches .sidebar + 62% black
+        : const Color(0xFFEBEBED); // light: matches .sidebar + 5% white
 
     // Pinning triggers on any non-zero scroll offset. Using
     // `overlapsContent` was unreliable — it only flipped when a

@@ -1,7 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
-import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/foundation.dart' show kDebugMode, kIsWeb;
 import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import 'auth_service.dart';
@@ -166,8 +166,15 @@ class SpeechService {
   }
 
   void log(String msg) {
-    final f = File('${Platform.environment['HOME']}/flow_debug.log');
-    f.writeAsStringSync('${DateTime.now()}: $msg\n', mode: FileMode.append);
+    // Debug-only log file. Writing ~/flow_debug.log in production would
+    // pile up unbounded state on every user's machine and leak partial
+    // transcripts on disk; guard it so release builds stay silent.
+    if (!kDebugMode) return;
+    if (kIsWeb) return;
+    try {
+      final f = File('${Platform.environment['HOME']}/flow_debug.log');
+      f.writeAsStringSync('${DateTime.now()}: $msg\n', mode: FileMode.append);
+    } catch (_) {}
   }
 
   Future<TranscribeResult?> transcribeWithTranslation(

@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:window_manager/window_manager.dart';
 
@@ -18,21 +19,26 @@ void main() async {
   // Init persistent storage
   await StorageService.init();
 
-  await windowManager.ensureInitialized();
+  // window_manager is a macOS/desktop plugin — its MethodChannel has
+  // no implementation on web and throws MissingPluginException. Skip
+  // the native window setup entirely when running in a browser.
+  if (!kIsWeb) {
+    await windowManager.ensureInitialized();
 
-  const windowOptions = WindowOptions(
-    size: Size(800, 600),
-    minimumSize: Size(700, 500),
-    center: true,
-    backgroundColor: Colors.transparent,
-    titleBarStyle: TitleBarStyle.hidden,
-    title: 'Flow',
-  );
+    const windowOptions = WindowOptions(
+      size: Size(800, 600),
+      minimumSize: Size(700, 500),
+      center: true,
+      backgroundColor: Colors.transparent,
+      titleBarStyle: TitleBarStyle.hidden,
+      title: 'Flow',
+    );
 
-  await windowManager.waitUntilReadyToShow(windowOptions, () async {
-    await windowManager.show();
-    await windowManager.focus();
-  });
+    await windowManager.waitUntilReadyToShow(windowOptions, () async {
+      await windowManager.show();
+      await windowManager.focus();
+    });
+  }
 
   runApp(const FlowApp());
 }

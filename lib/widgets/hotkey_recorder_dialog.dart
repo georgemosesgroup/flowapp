@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 import '../services/hotkey_service.dart';
+import '../theme/tokens.dart';
+import '../theme/typography.dart';
+import 'flow_button.dart';
 
 class HotkeyRecorderDialog extends StatefulWidget {
   final HotkeyService hotkeyService;
@@ -81,39 +84,48 @@ class _HotkeyRecorderDialogState extends State<HotkeyRecorderDialog> {
 
   @override
   Widget build(BuildContext context) {
+    // Display-area state: idle (empty) → recording (in progress) →
+    // ready (captured). Border tint follows state: accent while
+    // recording, green once ready, subtle stroke when idle.
+    final displayBorder = _ready
+        ? FlowTokens.systemGreen.withValues(alpha: 0.5)
+        : _display.isNotEmpty
+            ? FlowTokens.accent.withValues(alpha: 0.4)
+            : FlowTokens.strokeDivider;
+
     return Dialog(
-      backgroundColor: const Color(0xFF111827),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      backgroundColor: FlowTokens.bgElevatedOpaque,
+      elevation: 0,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(FlowTokens.radiusLg),
+        side: BorderSide(color: FlowTokens.strokeSubtle, width: 0.5),
+      ),
       child: Padding(
-        padding: const EdgeInsets.all(24),
+        padding: const EdgeInsets.all(FlowTokens.space24),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Text(
+            Text(
               'Record Shortcut',
-              style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
+              style: FlowType.title.copyWith(fontSize: 16),
+              textAlign: TextAlign.center,
             ),
             const SizedBox(height: 6),
             Text(
               _recording ? 'Hold modifier + press a key' : 'Release to confirm',
-              style: const TextStyle(color: Colors.white38, fontSize: 12),
+              style: FlowType.caption,
+              textAlign: TextAlign.center,
             ),
-            const SizedBox(height: 20),
+            const SizedBox(height: FlowTokens.space20),
 
-            // Display area
+            // Display area — recessed surface with state-tinted border.
             Container(
               width: double.infinity,
               height: 56,
               decoration: BoxDecoration(
-                color: const Color(0xFF0F172A),
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(
-                  color: _ready
-                      ? const Color(0xFF4CAF50).withValues(alpha: 0.5)
-                      : _display.isNotEmpty
-                          ? const Color(0xFFE94560).withValues(alpha: 0.4)
-                          : const Color(0xFF374151),
-                ),
+                color: FlowTokens.bgPressed,
+                borderRadius: BorderRadius.circular(FlowTokens.radiusMd),
+                border: Border.all(color: displayBorder, width: 1.0),
               ),
               child: Center(
                 child: _display.isEmpty
@@ -121,12 +133,22 @@ class _HotkeyRecorderDialogState extends State<HotkeyRecorderDialog> {
                         mainAxisSize: MainAxisSize.min,
                         children: [
                           if (_recording)
-                            const SizedBox(
-                              width: 14, height: 14,
-                              child: CircularProgressIndicator(color: Color(0xFFE94560), strokeWidth: 2),
+                            SizedBox(
+                              width: 14,
+                              height: 14,
+                              child: CircularProgressIndicator(
+                                color: FlowTokens.accent,
+                                strokeWidth: 2,
+                              ),
                             ),
                           const SizedBox(width: 8),
-                          const Text('Waiting for keys...', style: TextStyle(color: Colors.white24, fontSize: 14)),
+                          Text(
+                            'Waiting for keys…',
+                            style: FlowType.body.copyWith(
+                              fontSize: 14,
+                              color: FlowTokens.textTertiary,
+                            ),
+                          ),
                         ],
                       )
                     : _buildKeyChips(_display),
@@ -134,65 +156,69 @@ class _HotkeyRecorderDialogState extends State<HotkeyRecorderDialog> {
             ),
 
             if (_ready)
-              const Padding(
-                padding: EdgeInsets.only(top: 8),
+              Padding(
+                padding: const EdgeInsets.only(top: FlowTokens.space8),
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    Icon(Icons.check_circle, color: Color(0xFF4CAF50), size: 14),
-                    SizedBox(width: 4),
-                    Text('Ready to save', style: TextStyle(color: Color(0xFF4CAF50), fontSize: 11)),
+                    const Icon(
+                      Icons.check_circle,
+                      color: FlowTokens.systemGreen,
+                      size: 14,
+                    ),
+                    const SizedBox(width: 4),
+                    Text(
+                      'Ready to save',
+                      style: FlowType.footnote.copyWith(
+                        color: FlowTokens.systemGreen,
+                      ),
+                    ),
                   ],
                 ),
               ),
 
             if (_error != null)
               Padding(
-                padding: const EdgeInsets.only(top: 8),
-                child: Text(_error!, style: const TextStyle(color: Color(0xFFE94560), fontSize: 11)),
+                padding: const EdgeInsets.only(top: FlowTokens.space8),
+                child: Text(
+                  _error!,
+                  style: FlowType.footnote.copyWith(
+                    color: FlowTokens.systemRed,
+                  ),
+                ),
               ),
 
-            const SizedBox(height: 20),
+            const SizedBox(height: FlowTokens.space20),
 
             Row(
               children: [
                 Expanded(
-                  child: OutlinedButton(
+                  child: FlowButton(
+                    label: 'Cancel',
+                    variant: FlowButtonVariant.tinted,
+                    size: FlowButtonSize.md,
+                    fullWidth: true,
                     onPressed: () => Navigator.of(context).pop(),
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: Colors.white54,
-                      side: const BorderSide(color: Color(0xFF374151)),
-                      padding: const EdgeInsets.symmetric(vertical: 12),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                    ),
-                    child: const Text('Cancel', style: TextStyle(fontSize: 13)),
                   ),
                 ),
-                const SizedBox(width: 8),
+                const SizedBox(width: FlowTokens.space8),
                 Expanded(
-                  child: OutlinedButton(
+                  child: FlowButton(
+                    label: 'Retry',
+                    variant: FlowButtonVariant.tinted,
+                    size: FlowButtonSize.md,
+                    fullWidth: true,
                     onPressed: _retry,
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: Colors.white54,
-                      side: const BorderSide(color: Color(0xFF374151)),
-                      padding: const EdgeInsets.symmetric(vertical: 12),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                    ),
-                    child: const Text('Retry', style: TextStyle(fontSize: 13)),
                   ),
                 ),
-                const SizedBox(width: 8),
+                const SizedBox(width: FlowTokens.space8),
                 Expanded(
-                  child: ElevatedButton(
+                  child: FlowButton(
+                    label: 'Save',
+                    variant: FlowButtonVariant.filled,
+                    size: FlowButtonSize.md,
+                    fullWidth: true,
                     onPressed: _ready ? _save : null,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFFE94560),
-                      disabledBackgroundColor: const Color(0xFF374151),
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(vertical: 12),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                    ),
-                    child: const Text('Save', style: TextStyle(fontSize: 13)),
                   ),
                 ),
               ],
@@ -210,20 +236,32 @@ class _HotkeyRecorderDialogState extends State<HotkeyRecorderDialog> {
       children: [
         for (int i = 0; i < parts.length; i++) ...[
           if (i > 0)
-            const Padding(
-              padding: EdgeInsets.symmetric(horizontal: 4),
-              child: Text('+', style: TextStyle(color: Colors.white38, fontSize: 14)),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 4),
+              child: Text(
+                '+',
+                style: FlowType.body.copyWith(
+                  fontSize: 14,
+                  color: FlowTokens.textTertiary,
+                ),
+              ),
             ),
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            padding: const EdgeInsets.symmetric(
+              horizontal: FlowTokens.space12,
+              vertical: 6,
+            ),
             decoration: BoxDecoration(
-              color: const Color(0xFF1F2937),
-              borderRadius: BorderRadius.circular(6),
-              border: Border.all(color: const Color(0xFF374151)),
+              color: FlowTokens.bgElevated,
+              borderRadius: BorderRadius.circular(FlowTokens.radiusSm),
+              border: Border.all(color: FlowTokens.strokeSubtle, width: 0.5),
             ),
             child: Text(
               parts[i],
-              style: const TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.w600),
+              style: FlowType.bodyStrong.copyWith(
+                fontSize: 15,
+                color: FlowTokens.textPrimary,
+              ),
             ),
           ),
         ],

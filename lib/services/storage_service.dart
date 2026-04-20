@@ -392,6 +392,15 @@ class StorageService {
   Future<void> setLastProvider(String provider) =>
       _prefs.setString('diag_last_provider', provider);
 
+  // Update prompt — the highest build number the user has clicked "×"
+  // on in the Home-screen UpdateBanner. Used to suppress the prompt
+  // for a release the user has explicitly declined. When a newer
+  // build than this ships, the banner reappears. 0 means "never
+  // dismissed" (fresh install or the user has always clicked Update).
+  int get skippedUpdateBuild => _prefs.getInt('skipped_update_build') ?? 0;
+  Future<void> setSkippedUpdateBuild(int build) =>
+      _prefs.setInt('skipped_update_build', build);
+
   // Settings - Training corpus participation (opt-in, default OFF).
   // When true, the desktop client sends X-Training-Consent: true with each
   // transcribe request so the backend may retain the audio for model

@@ -5,7 +5,10 @@ import '../models/saved_account.dart';
 import 'storage_service.dart';
 
 class AuthService {
-  static const _defaultServerUrl = 'https://api.voiceassistant.test';
+  /// Production backend. Desktop builds point here by default; the
+  /// dashboard/admin tools live at the sibling `app.flow.mosesdev.com`
+  /// and `admin.flow.mosesdev.com` origins.
+  static const _defaultServerUrl = 'https://api.flow.mosesdev.com';
 
   String _serverUrl = _defaultServerUrl;
   String _accessToken = '';

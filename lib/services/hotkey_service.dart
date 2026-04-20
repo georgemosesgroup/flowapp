@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/services.dart';
 
 enum HotkeyMode { doubleCtrl, holdCtrl, custom }
@@ -43,7 +44,11 @@ class HotkeyService {
   }
 
   HotkeyService() {
-    _channel.setMethodCallHandler(_handleMethod);
+    // Web has no native hotkey listener — skip the channel handler
+    // registration so we don't hold a dead reference.
+    if (!kIsWeb) {
+      _channel.setMethodCallHandler(_handleMethod);
+    }
   }
 
   Future<dynamic> _handleMethod(MethodCall call) async {
@@ -81,6 +86,8 @@ class HotkeyService {
     this.onHoldStart = onHoldStart;
     this.onHoldEnd = onHoldEnd;
 
+    if (kIsWeb) return; // No native hotkeys in the browser.
+
     String modeStr;
     switch (_mode) {
       case HotkeyMode.doubleCtrl:
@@ -113,6 +120,7 @@ class HotkeyService {
       case HotkeyMode.custom:
         break;
     }
+    if (kIsWeb) return;
     await _channel.invokeMethod('setMode', {
       'mode': mode == HotkeyMode.doubleCtrl
           ? 'double_ctrl'
@@ -127,6 +135,7 @@ class HotkeyService {
     _customKeyCode = keyCode;
     _customModifiers = modifiers;
     _displayName = displayName;
+    if (kIsWeb) return;
     // Restart native listener with new custom params
     await _channel.invokeMethod('startListening', {
       'mode': 'custom',
@@ -141,15 +150,21 @@ class HotkeyService {
   }) async {
     this.onRecorded = onRecorded;
     onRecordingUpdate = onUpdate;
+    if (kIsWeb) return;
     await _channel.invokeMethod('startRecording');
   }
 
   Future<void> stopRecording() async {
+    if (kIsWeb) {
+      onRecorded = null;
+      return;
+    }
     await _channel.invokeMethod('stopRecording');
     onRecorded = null;
   }
 
   Future<void> stop() async {
+    if (kIsWeb) return;
     await _channel.invokeMethod('stopListening');
   }
 

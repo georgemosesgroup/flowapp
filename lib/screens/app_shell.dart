@@ -10,9 +10,11 @@ import '../services/flow_bar_service.dart';
 import '../services/text_insertion_service.dart';
 import '../services/api_service.dart';
 import '../services/realtime_dictate_service.dart';
+import '../services/update_service.dart';
 import '../theme/tokens.dart';
 import '../widgets/sidebar.dart';
 import '../widgets/toolbar_inset.dart';
+import '../widgets/update_banner.dart';
 import 'home_screen.dart';
 import 'settings_screen.dart';
 import 'account_screen.dart';
@@ -79,6 +81,7 @@ class _AppShellState extends State<AppShell> {
   late final RealtimeDictateService _realtimeService;
   StreamSubscription<RealtimeDictateEvent>? _realtimeSub;
   final SuggestionsService _suggestionsService = SuggestionsService();
+  late final UpdateService _updateService;
 
   bool _isRecording = false;
   bool _isTranscribing = false;
@@ -127,6 +130,13 @@ class _AppShellState extends State<AppShell> {
     _channel.setMethodCallHandler(_handleNativeCall);
     _initHotkey();
     _loadSnippets();
+    // Fire off the first update check. UpdateService.start() is async
+    // but self-contained — we don't await it so a slow network doesn't
+    // delay the app landing on Home. The ListenableBuilder wrapping
+    // UpdateBanner will rebuild as soon as the first poll resolves.
+    _updateService = UpdateService(widget.authService);
+    // ignore: discarded_futures
+    _updateService.start();
   }
 
   Future<void> _loadSnippets() async {
@@ -669,6 +679,7 @@ class _AppShellState extends State<AppShell> {
     _audioLevelSub?.cancel();
     _realtimeSub?.cancel();
     _realtimeService.dispose();
+    _updateService.dispose();
     _hotkeyService.dispose();
     super.dispose();
   }
@@ -720,15 +731,50 @@ class _AppShellState extends State<AppShell> {
           Expanded(
             child: ToolbarInset(
               leftInset: 0,
-              child: _showAccount
-                  ? AccountScreen(
-                      authService: widget.authService,
-                      apiService: _apiService,
-                      onLogout: widget.onLogout,
-                      onClose: () =>
-                          setState(() => _showAccount = false),
-                    )
-                  : _buildContent(),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  // "New version available" strip. Sits above every
+                  // screen's toolbar so the prompt is visible from any
+                  // nav target, not just Home. AnimatedSize makes the
+                  // banner slide in/out smoothly as the service flips
+                  // between null and an info payload, rather than
+                  // popping into place.
+                  ListenableBuilder(
+                    listenable: _updateService,
+                    builder: (context, _) {
+                      final info = _updateService.available;
+                      return AnimatedSize(
+                        duration: FlowTokens.durBase,
+                        curve: FlowTokens.easeStandard,
+                        alignment: Alignment.topCenter,
+                        child: info == null
+                            ? const SizedBox(
+                                width: double.infinity, height: 0)
+                            : UpdateBanner(
+                                info: info,
+                                forceUpdate: _updateService.isForceUpdate,
+                                onUpdate: _updateService.openDownload,
+                                onDismiss: _updateService.isForceUpdate
+                                    ? null
+                                    : _updateService.dismiss,
+                              ),
+                      );
+                    },
+                  ),
+                  Expanded(
+                    child: _showAccount
+                        ? AccountScreen(
+                            authService: widget.authService,
+                            apiService: _apiService,
+                            onLogout: widget.onLogout,
+                            onClose: () =>
+                                setState(() => _showAccount = false),
+                          )
+                        : _buildContent(),
+                  ),
+                ],
+              ),
             ),
           ),
         ],

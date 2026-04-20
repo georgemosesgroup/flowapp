@@ -190,7 +190,7 @@ class RealtimeDictateService {
     _connecting = true;
 
     // Convert http(s) base URL to ws(s) — same host+port, swap scheme only.
-    final httpBase = _auth.serverUrl; // e.g. https://api.voiceassistant.test
+    final httpBase = _auth.serverUrl; // e.g. https://api.flow.mosesdev.com
     final wsBase = httpBase
         .replaceFirst(RegExp(r'^https://'), 'wss://')
         .replaceFirst(RegExp(r'^http://'), 'ws://');

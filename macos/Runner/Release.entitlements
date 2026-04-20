@@ -8,5 +8,11 @@
 	<true/>
 	<key>com.apple.security.device.audio-input</key>
 	<true/>
+	<!-- Required for Flow's text-insertion + undo (⌘Z) paths, which
+	     drive AppleScript / CGEvent against the frontmost app. Without
+	     this, dictations can only be copied to the clipboard, not
+	     injected directly. -->
+	<key>com.apple.security.automation.apple-events</key>
+	<true/>
 </dict>
 </plist>

@@ -13,7 +13,7 @@
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
 	<key>CFBundleName</key>
-	<string>Voice Assistant</string>
+	<string>Flow</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
@@ -31,8 +31,10 @@
 	<key>LSUIElement</key>
 	<true/>
 	<key>NSMicrophoneUsageDescription</key>
-	<string>Voice Assistant needs access to your microphone for speech-to-text dictation.</string>
+	<string>Flow needs access to your microphone for speech-to-text dictation.</string>
 	<key>NSSpeechRecognitionUsageDescription</key>
-	<string>Voice Assistant uses speech recognition to convert your voice to text.</string>
+	<string>Flow uses speech recognition to convert your voice to text.</string>
+	<key>NSAppleEventsUsageDescription</key>
+	<string>Flow inserts dictated text into the frontmost app and performs Undo (⌘Z) when you dismiss an insertion.</string>
 </dict>
 </plist>

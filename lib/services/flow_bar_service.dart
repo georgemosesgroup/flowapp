@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/services.dart';
 
 class FlowBarService {
@@ -17,7 +18,11 @@ class FlowBarService {
   VoidCallback? onStopClicked;
 
   FlowBarService() {
-    _channel.setMethodCallHandler(_handleMethod);
+    // Web has no native FlowBar — skip registering the callback
+    // handler so we don't keep a dead channel around.
+    if (!kIsWeb) {
+      _channel.setMethodCallHandler(_handleMethod);
+    }
   }
 
   Future<dynamic> _handleMethod(MethodCall call) async {
@@ -31,6 +36,7 @@ class FlowBarService {
   }
 
   Future<void> show({String state = 'idle', String? text, String? shortcutLabel}) async {
+    if (kIsWeb) return;
     await _channel.invokeMethod('show', {
       'state': state,
       'text': ?text,
@@ -39,14 +45,17 @@ class FlowBarService {
   }
 
   Future<void> setShortcutLabel(String label) async {
+    if (kIsWeb) return;
     await _channel.invokeMethod('setShortcutLabel', {'label': label});
   }
 
   Future<void> hide() async {
+    if (kIsWeb) return;
     await _channel.invokeMethod('hide');
   }
 
   Future<void> updateState({required String state, String? text}) async {
+    if (kIsWeb) return;
     await _channel.invokeMethod('updateState', {
       'state': state,
       'text': ?text,

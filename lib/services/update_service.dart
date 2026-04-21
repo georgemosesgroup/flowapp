@@ -148,7 +148,7 @@ class UpdateService extends ChangeNotifier {
     _timer = Timer.periodic(_pollInterval, (_) => _check());
   }
 
-  Future<void> _check() async {
+  Future<void> _check({bool force = false}) async {
     try {
       final resp = await http
           .get(Uri.parse('${_auth.serverUrl}/api/v1/desktop/latest'))
@@ -178,11 +178,14 @@ class UpdateService extends ChangeNotifier {
         return;
       }
 
-      // User tapped × on a release >= this one. Skip, UNLESS this is
-      // a force-update (min_build beats the user's preference).
+      // Auto-check respects the skip-this-version preference so the
+      // banner doesn't nag. A *manual* Check for Updates (`force=true`)
+      // ignores it — the user explicitly asked, so they expect to see
+      // the result regardless of a prior dismiss. Force-updates
+      // (min_build > current) always surface, dismiss or not.
       final dismissed = StorageService.instance.skippedUpdateBuild;
       final isForce = info.minBuild > _currentBuild;
-      if (!isForce && dismissed >= info.build) {
+      if (!force && !isForce && dismissed >= info.build) {
         _setAvailable(null);
         return;
       }
@@ -355,9 +358,11 @@ class UpdateService extends ChangeNotifier {
     _setAvailable(null);
   }
 
-  /// Manual trigger — handy if we ever expose a "Check for updates"
-  /// button in Settings. Returns when the probe completes.
-  Future<void> checkNow() => _check();
+  /// Manual trigger — fires when the user clicks Check for Updates…
+  /// (menu bar or Settings → About). Ignores the "skip this version"
+  /// preference: if the user is explicitly asking, they expect to see
+  /// the result even if they dismissed the same build previously.
+  Future<void> checkNow() => _check(force: true);
 
   @override
   void dispose() {

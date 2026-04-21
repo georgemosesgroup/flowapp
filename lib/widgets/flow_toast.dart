@@ -80,14 +80,50 @@ class FlowToast {
     FlowToastVariant variant = FlowToastVariant.info,
     Duration duration = const Duration(milliseconds: 1800),
   }) {
-    final overlay = Overlay.maybeOf(context, rootOverlay: true);
+    // Two-step lookup: root overlay first (scaffolded pages), then
+    // plain ancestor (fallback if `context` is already inside the
+    // overlay element — e.g. the OverlayState's own context, which
+    // happens when callers come from PlatformMenu callbacks via
+    // navigatorKey.currentState.overlay.context).
+    final overlay = Overlay.maybeOf(context, rootOverlay: true) ??
+        Overlay.maybeOf(context);
     if (overlay == null) return;
+    _showInOverlay(
+      overlay,
+      sidebarWidth: SidebarMetrics.widthOf(context),
+      message: message,
+      variant: variant,
+      duration: duration,
+    );
+  }
 
-    // Snapshot the sidebar width at show() time. We do not subscribe to
-    // later changes — the toast lifetime is short enough that a sidebar
-    // toggle mid-flight would be jarring anyway; centering freezes.
-    final leftInset = SidebarMetrics.widthOf(context);
+  /// Overlay-first entrypoint. Use this when you already have an
+  /// [OverlayState] (e.g. `navigatorKey.currentState?.overlay`) and
+  /// want to avoid the InheritedWidget look-up entirely. Saves us
+  /// from the PlatformMenuBar context-isolation problem on macOS.
+  static void showInOverlay(
+    OverlayState overlay, {
+    required String message,
+    FlowToastVariant variant = FlowToastVariant.info,
+    Duration duration = const Duration(milliseconds: 1800),
+    double sidebarWidth = 0,
+  }) {
+    _showInOverlay(
+      overlay,
+      sidebarWidth: sidebarWidth,
+      message: message,
+      variant: variant,
+      duration: duration,
+    );
+  }
 
+  static void _showInOverlay(
+    OverlayState overlay, {
+    required String message,
+    required FlowToastVariant variant,
+    required Duration duration,
+    required double sidebarWidth,
+  }) {
     _dismissImmediate();
 
     late OverlayEntry entry;
@@ -96,7 +132,7 @@ class FlowToast {
         message: message,
         variant: variant,
         visibleFor: duration,
-        leftInset: leftInset,
+        leftInset: sidebarWidth,
         onGone: () {
           if (identical(_current, entry)) {
             _current = null;

@@ -106,38 +106,40 @@ class FlowMenuBar extends StatelessWidget {
 
   Future<void> _checkForUpdates() async {
     final service = UpdateService.current;
-    // navigatorKey.currentContext points at the Navigator widget, but
-    // our Overlay lives *inside* that Navigator — Overlay.maybeOf from
-    // the Navigator's own context returns null and FlowToast silently
-    // becomes a no-op. Grab the OverlayState.context instead: it's a
-    // descendant of the Overlay, so look-ups resolve correctly.
-    final overlayCtx = navigatorKey.currentState?.overlay?.context;
-    if (service == null || overlayCtx == null) return;
+    // Bypass the Overlay.maybeOf look-up entirely — PlatformMenu
+    // callbacks on macOS run in a context where the usual ancestor
+    // walk doesn't find the root overlay. Grab the OverlayState
+    // directly off the navigator and insert into it.
+    final overlay = navigatorKey.currentState?.overlay;
+    if (service == null || overlay == null) return;
 
-    FlowToast.info(
-      overlayCtx,
-      'Checking for updates\u2026',
+    FlowToast.showInOverlay(
+      overlay,
+      message: 'Checking for updates\u2026',
+      variant: FlowToastVariant.info,
       duration: const Duration(seconds: 2),
     );
 
     await service.checkNow();
 
-    final freshCtx = navigatorKey.currentState?.overlay?.context;
-    if (freshCtx == null) return;
-    // freshCtx is re-fetched after the await from the live Overlay,
-    // so it reflects the current tree — the lint can't prove that.
+    final freshOverlay = navigatorKey.currentState?.overlay;
+    if (freshOverlay == null) return;
     if (service.available == null) {
       final v = service.currentVersion.isNotEmpty
           ? ' (${service.currentVersion})'
           : '';
-      // ignore: use_build_context_synchronously
-      FlowToast.success(freshCtx, 'You\u2019re up to date$v');
+      FlowToast.showInOverlay(
+        freshOverlay,
+        message: 'You\u2019re up to date$v',
+        variant: FlowToastVariant.success,
+      );
     } else {
-      // Banner also surfaces the prompt; toast just confirms the check
-      // landed in case the user's eyes were on the menu bar.
-      final msg = 'Flow ${service.available!.version} is available';
-      // ignore: use_build_context_synchronously
-      FlowToast.info(freshCtx, msg, duration: const Duration(seconds: 3));
+      FlowToast.showInOverlay(
+        freshOverlay,
+        message: 'Flow ${service.available!.version} is available',
+        variant: FlowToastVariant.info,
+        duration: const Duration(seconds: 3),
+      );
     }
   }
 

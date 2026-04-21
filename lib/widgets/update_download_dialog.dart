@@ -1,6 +1,8 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../services/update_service.dart';
 import '../theme/tokens.dart';
@@ -32,7 +34,7 @@ class UpdateDownloadDialog extends StatefulWidget {
   State<UpdateDownloadDialog> createState() => _UpdateDownloadDialogState();
 }
 
-enum _Stage { downloading, done, cancelled, failed }
+enum _Stage { downloading, done, cancelled, failed, quitting }
 
 class _UpdateDownloadDialogState extends State<UpdateDownloadDialog> {
   _Stage _stage = _Stage.downloading;
@@ -80,14 +82,31 @@ class _UpdateDownloadDialogState extends State<UpdateDownloadDialog> {
     if (path == null) return;
     final ok = await widget.service.revealDmgInFinder(path);
     if (!mounted) return;
-    if (ok) {
-      // Let the user see Finder — the install step is theirs. Closing
-      // the dialog means they keep Flow usable while they finish the
-      // drag-and-drop over in the installer window.
-      Navigator.of(context).pop();
-    } else {
+    if (!ok) {
       setState(() => _stage = _Stage.failed);
+      return;
     }
+
+    // DMG is mounted — macOS won't let the user drag-replace
+    // /Applications/Flow.app while our process is still running, so
+    // quit cleanly here. A short delay lets Finder come to the front
+    // and render the mounted DMG window first; otherwise the user sees
+    // Flow close without understanding why and has to hunt for the
+    // installer in Downloads.
+    setState(() => _stage = _Stage.quitting);
+    await Future.delayed(const Duration(milliseconds: 600));
+
+    try {
+      await const MethodChannel('com.voiceassistant/window')
+          .invokeMethod('quit');
+    } on PlatformException {
+      // Channel missing (older binaries) — fall through to force exit.
+    }
+    // Belt-and-braces: if NSApp.terminate was vetoed or the channel
+    // handler isn't wired, force-exit so the user isn't stuck with a
+    // zombie Flow process blocking the drag-replace.
+    await Future.delayed(const Duration(milliseconds: 600));
+    exit(0);
   }
 
   double? get _progressFraction {
@@ -173,6 +192,11 @@ class _Header extends StatelessWidget {
           FlowTokens.systemRed,
           'Update failed',
         ),
+      _Stage.quitting => (
+          Icons.power_settings_new_rounded,
+          FlowTokens.systemBlue,
+          'Quitting Flow',
+        ),
     };
 
     return Row(
@@ -254,6 +278,12 @@ class _Body extends StatelessWidget {
         return Text(
           'Couldn\u2019t finish the download. Check your connection and '
           'retry, or open the release in your browser to download manually.',
+          style: FlowType.body,
+        );
+      case _Stage.quitting:
+        return Text(
+          'The installer is open. Flow is closing so you can drop the '
+          'new version into your Applications folder.',
           style: FlowType.body,
         );
     }
@@ -367,6 +397,11 @@ class _Actions extends StatelessWidget {
             ),
           ],
         );
+      case _Stage.quitting:
+        // No actions — process is about to go away. Empty row keeps
+        // the dialog's vertical layout stable for the ~0.6 s window
+        // between "quitting" and terminate().
+        return const SizedBox.shrink();
     }
   }
 }

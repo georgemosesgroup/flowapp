@@ -129,6 +129,21 @@ class MainFlutterWindow: NSWindow, NSWindowDelegate {
         result(nil)
       case "getFocusState":
         result(self.isKeyWindow)
+      case "quit":
+        // Ask AppKit to terminate cleanly. AppDelegate's
+        // applicationShouldTerminate hook still runs, so any pending
+        // work (e.g. flushing settings to disk) gets a chance to
+        // finish. Called from Dart when the user accepts an update —
+        // they need Flow.app dead before the new DMG can replace it
+        // in /Applications.
+        result(nil)
+        // Fire on the next runloop tick so the FlutterMethodChannel
+        // reply can actually make it back to Dart before the process
+        // vanishes. Without this the dialog's `await invokeMethod`
+        // can hang forever on a completer that never resolves.
+        DispatchQueue.main.async {
+          NSApp.terminate(nil)
+        }
       case "setActivationPolicy":
         // "regular"   → Dock icon + menu bar (needed for PlatformMenuBar
         //                to actually render on screen).

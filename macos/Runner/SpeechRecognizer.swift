@@ -169,12 +169,32 @@ class SpeechRecognizerPlugin: NSObject, FlutterPlugin {
             return
         }
 
+        // Defensive reset: if the engine was left in a weird state by a
+        // previous crash-mid-recording (another app with the same bundle
+        // id, or a prior Flow process killed without graceful stop), any
+        // orphan tap on bus 0 or a running engine will make installTap
+        // below throw an NSException — which in Swift means an
+        // un-catchable abort(). Clean the slate first.
+        if audioEngine.isRunning {
+            audioEngine.stop()
+        }
+        audioEngine.inputNode.removeTap(onBus: 0)
+
         let tempDir = NSTemporaryDirectory()
         let fileName = "voice_recording_\(Int(Date().timeIntervalSince1970)).wav"
         recordingURL = URL(fileURLWithPath: tempDir + fileName)
 
         let inputNode = audioEngine.inputNode
         let recordingFormat = inputNode.outputFormat(forBus: 0)
+
+        // Guard: on machines where the default input has just been hot-
+        // swapped (Bluetooth headset disconnect, external interface
+        // unplugged) AVAudioEngine briefly reports a 0-channel format,
+        // which installTap treats as a fatal precondition failure.
+        guard recordingFormat.channelCount > 0, recordingFormat.sampleRate > 0 else {
+            result(FlutterError(code: "no_input_device", message: "No microphone input available", details: nil))
+            return
+        }
 
         do {
             audioFile = try AVAudioFile(forWriting: recordingURL!, settings: recordingFormat.settings)
@@ -368,8 +388,22 @@ class SpeechRecognizerPlugin: NSObject, FlutterPlugin {
             return
         }
 
+        // Same defensive reset as startRecording — see the comment
+        // there. This is the path that crashed on a user's M3 Max with
+        // `installTapOnBus:bufferSize:format:block:` throwing an
+        // NSException at +1096 into startRealtimeRecording (Flow 1.0.6).
+        if audioEngine.isRunning {
+            audioEngine.stop()
+        }
+        audioEngine.inputNode.removeTap(onBus: 0)
+
         let inputNode = audioEngine.inputNode
         let inputFormat = inputNode.outputFormat(forBus: 0)
+
+        guard inputFormat.channelCount > 0, inputFormat.sampleRate > 0 else {
+            result(FlutterError(code: "no_input_device", message: "No microphone input available", details: nil))
+            return
+        }
 
         // Target: 16 kHz, 16-bit signed integer (PCM16LE), mono
         guard let targetFormat = AVAudioFormat(

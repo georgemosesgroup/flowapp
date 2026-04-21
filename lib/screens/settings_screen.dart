@@ -5,14 +5,17 @@ import '../services/hotkey_service.dart';
 import '../services/storage_service.dart';
 import '../services/speech_service.dart';
 import '../services/flow_bar_service.dart';
+import '../services/update_service.dart';
 import '../theme/tokens.dart';
 import '../theme/typography.dart';
 import '../widgets/flow_button.dart';
 import '../widgets/flow_card.dart';
 import '../widgets/flow_section.dart';
 import '../widgets/flow_segmented_control.dart';
+import '../widgets/flow_toast.dart';
 import '../widgets/hotkey_recorder_dialog.dart';
 import '../widgets/toolbar_inset.dart';
+import '../widgets/update_download_dialog.dart';
 
 class SettingsScreen extends StatefulWidget {
   final HotkeyService? hotkeyService;
@@ -49,12 +52,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   void _showSaved() {
-    ScaffoldMessenger.of(context).clearSnackBars();
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Saved'),
-        duration: Duration(milliseconds: 800),
-      ),
+    FlowToast.success(
+      context,
+      'Saved',
+      duration: const Duration(milliseconds: 1000),
     );
   }
 
@@ -66,7 +67,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
       setState(() {
         _microphones = unique;
         if (_selectedMic.isEmpty || !unique.any((m) => m['id'] == _selectedMic)) {
-          _selectedMic = unique.isNotEmpty ? unique.first['id'] ?? 'default' : 'default';
+          // Prefer the system-default input (Swift marked it with
+          // isDefault=true and floated it to the top). Falls back to
+          // the first entry only when no device identifies itself as
+          // the default — rare, but happens on headless machines.
+          final defaultMic = unique.firstWhere(
+            (m) => m['isDefault'] == 'true',
+            orElse: () => unique.isNotEmpty ? unique.first : const {},
+          );
+          _selectedMic = defaultMic['id'] ?? 'default';
         }
       });
     }
@@ -186,12 +195,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   widget.hotkeyService?.setCustomHotkey(keyCode, modifiers, display);
                   setState(() {});
                   if (mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Text('Shortcut saved: $display'),
-                        duration: const Duration(seconds: 2),
-                      ),
-                    );
+                    FlowToast.success(context, 'Shortcut saved: $display');
                   }
                 }
               },
@@ -310,6 +314,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ),
           ],
         ),
+        const SizedBox(height: FlowTokens.space24),
+
+        const _AboutSection(),
       ],
     );
   }
@@ -537,20 +544,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   final api = widget.apiService;
                   if (api == null) {
                     if (!mounted) return;
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('Unavailable offline')),
-                    );
+                    FlowToast.error(context, 'Unavailable offline');
                     return;
                   }
                   final ok = await api.deleteAllDictations();
                   if (!mounted) return;
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text(
-                        ok ? 'History deleted' : 'Delete failed — try again',
-                      ),
-                    ),
-                  );
+                  if (ok) {
+                    FlowToast.success(context, 'History deleted');
+                  } else {
+                    FlowToast.error(context, 'Delete failed — try again');
+                  }
                 },
               ),
             ),
@@ -600,9 +603,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 'Last provider: ${_storage.lastProvider}',
             ].join('\n');
             Clipboard.setData(ClipboardData(text: diag));
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('Diagnostics copied')),
-            );
+            FlowToast.success(context, 'Diagnostics copied');
           },
         ),
       ],
@@ -1146,6 +1147,134 @@ class _AppearanceRowState extends State<_AppearanceRow> {
           ),
         );
       },
+    );
+  }
+}
+
+// ── About section ───────────────────────────────────────────
+//
+// Bottom-of-General card exposing the running version and a manual
+// "Check for updates" button. The button mirrors the native Flow →
+// Check for Updates… menu command so users who never think to click
+// a macOS menu bar can still trigger a probe.
+//
+// State-wise we lean on the existing UpdateService singleton: version
+// comes from its PackageInfo snapshot, freshness is reflected via
+// ListenableBuilder on the service itself.
+
+class _AboutSection extends StatefulWidget {
+  const _AboutSection();
+
+  @override
+  State<_AboutSection> createState() => _AboutSectionState();
+}
+
+class _AboutSectionState extends State<_AboutSection> {
+  bool _checking = false;
+  UpdateService? _service;
+
+  @override
+  void initState() {
+    super.initState();
+    _service = UpdateService.current;
+    _service?.addListener(_onExternalChange);
+    // FlowTokens.* are static getters driven by FlowThemeController.
+    // Navigator inside MaterialApp keeps our subtree alive across
+    // theme flips, so without a direct listener the cached palette
+    // values stick and About renders in the previous brightness.
+    FlowThemeController.instance.addListener(_onExternalChange);
+  }
+
+  @override
+  void dispose() {
+    _service?.removeListener(_onExternalChange);
+    FlowThemeController.instance.removeListener(_onExternalChange);
+    super.dispose();
+  }
+
+  void _onExternalChange() {
+    if (mounted) setState(() {});
+  }
+
+  Future<void> _checkNow() async {
+    final service = UpdateService.current;
+    if (service == null || _checking) return;
+
+    setState(() => _checking = true);
+    final wasAvailable = service.available != null;
+    try {
+      await service.checkNow();
+    } finally {
+      if (mounted) setState(() => _checking = false);
+    }
+
+    // If the probe didn't surface a newer build, the banner path can't
+    // speak for us — drop a toast so the user sees something moved.
+    if (!mounted) return;
+    if (service.available == null) {
+      FlowToast.success(context, 'You\u2019re up to date');
+    } else if (!wasAvailable) {
+      // New banner just appeared; don't double up with a toast.
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    // Grabbing the singleton inside build() means a late-starting
+    // service (login after the widget mounted) still gets picked up on
+    // the next parent rebuild.
+    final service = _service ?? UpdateService.current;
+    final version = service?.currentVersion ?? '';
+    final build = service?.currentBuild ?? 0;
+    final available = service?.available;
+
+    final versionLine = version.isEmpty
+        ? 'Flow'
+        : build > 0
+            ? 'Flow $version (build $build)'
+            : 'Flow $version';
+
+    final subtitle = available != null
+        ? 'Update available: ${available.version}'
+        : 'You\u2019re on the latest version';
+
+    return FlowSection(
+      title: 'About',
+      footer: 'Made by George Moses',
+      rows: [
+        FlowSettingRow(
+          leadingIcon: Icons.graphic_eq,
+          leadingIconBackground: FlowTokens.accent,
+          title: versionLine,
+          subtitle: subtitle,
+          trailing: FlowButton(
+            label: _checking
+                ? 'Checking\u2026'
+                : available != null
+                    ? 'Update'
+                    : 'Check for updates',
+            variant: available != null
+                ? FlowButtonVariant.filled
+                : FlowButtonVariant.ghost,
+            size: FlowButtonSize.sm,
+            onPressed: _checking
+                ? null
+                : available != null
+                    ? () {
+                        if (service == null) return;
+                        showDialog<void>(
+                          context: context,
+                          barrierDismissible: false,
+                          builder: (_) => UpdateDownloadDialog(
+                            service: service,
+                            info: available,
+                          ),
+                        );
+                      }
+                    : _checkNow,
+          ),
+        ),
+      ],
     );
   }
 }

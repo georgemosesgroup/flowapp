@@ -20,6 +20,22 @@ class HotkeyPlugin: NSObject, FlutterPlugin {
     // Hold detection
     private var isHolding = false
     private var holdTimer: Timer?
+    /// Minimum dwell time before a Ctrl press is interpreted as "hold
+    /// to dictate". Shorter presses fall through to the OS so plain
+    /// Ctrl-based shortcuts (Ctrl-C, Ctrl-Tab, etc.) keep working.
+    private let holdConfirmThreshold: TimeInterval = 0.25
+    /// Scheduled work that promotes a Ctrl-down into onHotkeyDown. We
+    /// keep the reference so a quick release can cancel it before the
+    /// Dart side ever hears about the press.
+    private var holdConfirmWorkItem: DispatchWorkItem?
+    /// Whether onHotkeyDown has already been delivered for the current
+    /// press. Used so a late release after a cancelled tap doesn't
+    /// accidentally emit a stray onHotkeyUp.
+    private var holdConfirmedDown = false
+
+    // Escape monitor (always active — cancels ongoing dictation)
+    private var escapeGlobalMonitor: Any?
+    private var escapeLocalMonitor: Any?
 
     static func register(with registrar: FlutterPluginRegistrar) {
         let channel = FlutterMethodChannel(
@@ -81,6 +97,11 @@ class HotkeyPlugin: NSObject, FlutterPlugin {
 
         log("startListening mode=\(mode) keyCode=\(currentKeyCode) modifiers=\(currentModifiers)")
 
+        // Independent monitor for Escape → cancel dictation in flight.
+        // Kept alive for the whole listener lifecycle so the user can
+        // always bail out, even if no hotkey is currently held.
+        startEscapeMonitor()
+
         switch hotkeyMode {
         case "double_ctrl":
             startDoubleTapMonitor()
@@ -109,6 +130,57 @@ class HotkeyPlugin: NSObject, FlutterPlugin {
         unregisterCustomHotkey()
         holdTimer?.invalidate()
         holdTimer = nil
+        holdConfirmWorkItem?.cancel()
+        holdConfirmWorkItem = nil
+        holdConfirmedDown = false
+        isHolding = false
+        stopEscapeMonitor()
+    }
+
+    // MARK: - Escape cancels dictation
+
+    private func startEscapeMonitor() {
+        stopEscapeMonitor()
+        // Global: fires while any other app is frontmost. No return
+        // value — we don't and can't swallow the event, which is fine;
+        // Escape in Safari/Mail/etc. still behaves normally.
+        escapeGlobalMonitor = NSEvent.addGlobalMonitorForEvents(
+            matching: .keyDown
+        ) { [weak self] event in
+            if event.keyCode == 53 { // kVK_Escape
+                DispatchQueue.main.async {
+                    self?.channel?.invokeMethod(
+                        "onCancelDictation", arguments: nil
+                    )
+                }
+            }
+        }
+        // Local: fires when Flow itself is focused. Returning the
+        // event keeps default behaviour (text fields still consume
+        // Escape, etc.) — we only notify Dart.
+        escapeLocalMonitor = NSEvent.addLocalMonitorForEvents(
+            matching: .keyDown
+        ) { [weak self] event in
+            if event.keyCode == 53 {
+                DispatchQueue.main.async {
+                    self?.channel?.invokeMethod(
+                        "onCancelDictation", arguments: nil
+                    )
+                }
+            }
+            return event
+        }
+    }
+
+    private func stopEscapeMonitor() {
+        if let m = escapeGlobalMonitor {
+            NSEvent.removeMonitor(m)
+            escapeGlobalMonitor = nil
+        }
+        if let m = escapeLocalMonitor {
+            NSEvent.removeMonitor(m)
+            escapeLocalMonitor = nil
+        }
     }
 
     private func restartListening() {
@@ -181,14 +253,43 @@ class HotkeyPlugin: NSObject, FlutterPlugin {
         let isCtrl = event.modifierFlags.contains(.control)
 
         if isCtrl && !isHolding {
+            // Ctrl just pressed. Arm a delayed "confirm" — if the user
+            // keeps holding past the threshold we'll notify Dart; if
+            // they release early (quick tap as part of Ctrl-C etc.)
+            // the work item is cancelled and Dart never hears about
+            // the press at all. This is what makes Hold-^-Ctrl coexist
+            // with ordinary Ctrl shortcuts.
             isHolding = true
-            DispatchQueue.main.async { [weak self] in
-                self?.channel?.invokeMethod("onHotkeyDown", arguments: nil)
+            holdConfirmedDown = false
+            holdConfirmWorkItem?.cancel()
+            let work = DispatchWorkItem { [weak self] in
+                guard let self = self else { return }
+                // Still holding when the timer fires → promote to a
+                // real dictation press.
+                if self.isHolding {
+                    self.holdConfirmedDown = true
+                    self.channel?.invokeMethod("onHotkeyDown", arguments: nil)
+                }
             }
+            holdConfirmWorkItem = work
+            DispatchQueue.main.asyncAfter(
+                deadline: .now() + holdConfirmThreshold,
+                execute: work
+            )
         } else if !isCtrl && isHolding {
             isHolding = false
-            DispatchQueue.main.async { [weak self] in
-                self?.channel?.invokeMethod("onHotkeyUp", arguments: nil)
+            // Cancel the pending confirm — if it hasn't run yet, the
+            // tap was shorter than the threshold and we drop it.
+            holdConfirmWorkItem?.cancel()
+            holdConfirmWorkItem = nil
+            // Only emit onHotkeyUp if we actually told Dart the key
+            // was down — otherwise the tap never existed from its
+            // point of view.
+            if holdConfirmedDown {
+                holdConfirmedDown = false
+                DispatchQueue.main.async { [weak self] in
+                    self?.channel?.invokeMethod("onHotkeyUp", arguments: nil)
+                }
             }
         }
     }

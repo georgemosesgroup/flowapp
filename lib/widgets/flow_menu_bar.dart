@@ -4,6 +4,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../services/update_service.dart';
 import '../theme/tokens.dart';
+import 'flow_toast.dart';
 
 /// Wraps [child] with a native macOS menu bar — the `[Apple] Flow /
 /// Window / Help` strip along the top of the screen.
@@ -45,12 +46,7 @@ class FlowMenuBar extends StatelessWidget {
             ),
             PlatformMenuItem(
               label: 'Check for Updates…',
-              onSelected: () {
-                // Fire-and-forget; the banner listens to UpdateService
-                // and will surface itself when the probe resolves.
-                // ignore: discarded_futures
-                UpdateService.current?.checkNow();
-              },
+              onSelected: _checkForUpdates,
             ),
             const PlatformMenuItemGroup(members: [
               PlatformProvidedMenuItem(
@@ -96,10 +92,6 @@ class FlowMenuBar extends StatelessWidget {
               onSelected: () => _open('https://flow.mosesdev.com'),
             ),
             PlatformMenuItem(
-              label: 'Download Latest',
-              onSelected: () => _open('https://downloads.flow.mosesdev.com'),
-            ),
-            PlatformMenuItem(
               label: 'Send Feedback…',
               onSelected: () => _open(
                 'mailto:gevmoses@gmail.com?subject=Flow%20feedback',
@@ -110,6 +102,39 @@ class FlowMenuBar extends StatelessWidget {
       ],
       child: child,
     );
+  }
+
+  Future<void> _checkForUpdates() async {
+    final service = UpdateService.current;
+    final context = navigatorKey.currentContext;
+    if (service == null || context == null) return;
+
+    FlowToast.info(
+      context,
+      'Checking for updates\u2026',
+      duration: const Duration(seconds: 2),
+    );
+
+    await service.checkNow();
+
+    final freshContext = navigatorKey.currentContext;
+    if (freshContext == null) return;
+    // freshContext is re-fetched from the GlobalKey *after* the await,
+    // so it reflects the live tree — safe to use even though the lint
+    // can't prove that statically.
+    if (service.available == null) {
+      final v = service.currentVersion.isNotEmpty
+          ? ' (${service.currentVersion})'
+          : '';
+      // ignore: use_build_context_synchronously
+      FlowToast.success(freshContext, 'You\u2019re up to date$v');
+    } else {
+      // Banner also surfaces the prompt; toast just confirms the check
+      // landed in case the user's eyes were on the menu bar.
+      final msg = 'Flow ${service.available!.version} is available';
+      // ignore: use_build_context_synchronously
+      FlowToast.info(freshContext, msg, duration: const Duration(seconds: 3));
+    }
   }
 
   Future<void> _showAbout() async {

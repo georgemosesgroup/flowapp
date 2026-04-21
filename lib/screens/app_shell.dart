@@ -15,6 +15,7 @@ import '../theme/tokens.dart';
 import '../widgets/sidebar.dart';
 import '../widgets/toolbar_inset.dart';
 import '../widgets/update_banner.dart';
+import '../widgets/update_download_dialog.dart';
 import 'home_screen.dart';
 import 'settings_screen.dart';
 import 'account_screen.dart';
@@ -419,7 +420,38 @@ class _AppShellState extends State<AppShell> {
       onHoldEnd: () {
         if (_isRecording) _stopAndTranscribe();
       },
+      onCancel: _cancelInFlight,
     );
+  }
+
+  /// Esc pressed anywhere on the system → abort whatever dictation is
+  /// in flight without transcribing / inserting. Covers the recording
+  /// window, the post-recording transcribe window, and the realtime
+  /// WebSocket session.
+  Future<void> _cancelInFlight() async {
+    if (!_isRecording && !_isTranscribing && !_isRealtimeSession) return;
+
+    widget.speechService.log('AppShell: Escape pressed, cancelling');
+    _stopAudioLevelForwarding();
+
+    if (_isRecording) {
+      try {
+        await widget.speechService.cancelRecording();
+      } catch (_) {}
+    }
+    if (_isRealtimeSession) {
+      try {
+        await _realtimeService.stop();
+      } catch (_) {}
+    }
+
+    if (!mounted) return;
+    setState(() {
+      _isRecording = false;
+      _isTranscribing = false;
+      _isRealtimeSession = false;
+    });
+    await _flowBarService.hide();
   }
 
   void _startAudioLevelForwarding() {
@@ -684,9 +716,27 @@ class _AppShellState extends State<AppShell> {
     super.dispose();
   }
 
+  /// Kick the user into the in-app download dialog for the given
+  /// release. Shared between the `UpdateBanner` CTA and any other
+  /// surface (Settings → About) that wants the same flow.
+  Future<bool> _showUpdateDialog(UpdateInfo info) async {
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => UpdateDownloadDialog(
+        service: _updateService,
+        info: info,
+      ),
+    );
+    return true;
+  }
+
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
+    final sidebarWidth = _sidebarCollapsed ? 88.0 : 220.0;
+    return SidebarMetrics(
+      sidebarWidth: sidebarWidth,
+      child: Scaffold(
       body: Row(
         children: [
           // Sidebar: 220 px expanded (labels) or 88 px compact
@@ -705,7 +755,7 @@ class _AppShellState extends State<AppShell> {
           AnimatedContainer(
             duration: FlowTokens.durSidebar,
             curve: FlowTokens.easeSidebar,
-            width: _sidebarCollapsed ? 88 : 220,
+            width: sidebarWidth,
             child: Sidebar(
               selected: _selectedNav,
               onSelect: (item) {
@@ -754,7 +804,7 @@ class _AppShellState extends State<AppShell> {
                             : UpdateBanner(
                                 info: info,
                                 forceUpdate: _updateService.isForceUpdate,
-                                onUpdate: _updateService.openDownload,
+                                onUpdate: () => _showUpdateDialog(info),
                                 onDismiss: _updateService.isForceUpdate
                                     ? null
                                     : _updateService.dismiss,
@@ -779,6 +829,7 @@ class _AppShellState extends State<AppShell> {
           ),
         ],
       ),
+    ),
     );
   }
 

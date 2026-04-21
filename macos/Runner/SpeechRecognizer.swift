@@ -733,10 +733,30 @@ class SpeechRecognizerPlugin: NSObject, FlutterPlugin {
             position: .unspecified
         ).devices
 
-        let list = devices.map { device -> [String: String] in
+        // System default input as reported by macOS. Used both to pin
+        // the "main" mic to the top of the list AND to fall back on
+        // when the user hasn't picked one yet — without this the Dart
+        // side defaulted to whatever random device landed first in
+        // `DiscoverySession.devices`, which is a virtual loopback on
+        // machines with BlackHole / VB-Cable installed.
+        let defaultId = AVCaptureDevice.default(for: .audio)?.uniqueID
+
+        // Sort: default mic first, rest alphabetised by localizedName.
+        var sorted = devices.sorted { a, b in
+            a.localizedName.localizedCaseInsensitiveCompare(b.localizedName)
+                == .orderedAscending
+        }
+        if let defaultId,
+           let idx = sorted.firstIndex(where: { $0.uniqueID == defaultId }) {
+            let d = sorted.remove(at: idx)
+            sorted.insert(d, at: 0)
+        }
+
+        let list = sorted.map { device -> [String: String] in
             return [
                 "id": device.uniqueID,
                 "name": device.localizedName,
+                "isDefault": device.uniqueID == defaultId ? "true" : "false",
             ]
         }
         result(list)
@@ -794,6 +814,11 @@ class StatusBarHelper: NSObject, NSMenuDelegate {
 
     @objc func showWindow() {
         for window in NSApp.windows where window is MainFlutterWindow {
+            // Promote to .regular before bringing the window up so the
+            // native menu bar is drawn on the same frame as the window.
+            if NSApp.activationPolicy() != .regular {
+                NSApp.setActivationPolicy(.regular)
+            }
             window.makeKeyAndOrderFront(nil)
             NSApp.activate(ignoringOtherApps: true)
             return
@@ -803,6 +828,8 @@ class StatusBarHelper: NSObject, NSMenuDelegate {
     @objc func hideWindow() {
         for window in NSApp.windows where window is MainFlutterWindow {
             window.orderOut(nil)
+            // Back to tray-only agent — drops menu bar and Dock icon.
+            NSApp.setActivationPolicy(.accessory)
             return
         }
     }

@@ -129,6 +129,35 @@ class MainFlutterWindow: NSWindow, NSWindowDelegate {
         result(nil)
       case "getFocusState":
         result(self.isKeyWindow)
+      case "setActivationPolicy":
+        // "regular"   → Dock icon + menu bar (needed for PlatformMenuBar
+        //                to actually render on screen).
+        // "accessory" → tray-only agent, hidden from Dock, no menu bar.
+        // "prohibited"→ completely hidden process; we don't use it but
+        //                keep the case for completeness.
+        //
+        // The app starts with LSUIElement=true (see Info.plist) so it
+        // boots as an accessory. We flip to .regular whenever the
+        // Flutter window is visible so the user sees a real menu bar,
+        // and back to .accessory when the window is hidden so Flow
+        // stays a menu-bar-tray app in spirit.
+        let args = call.arguments as? [String: Any]
+        let policy = (args?["policy"] as? String) ?? "regular"
+        let target: NSApplication.ActivationPolicy
+        switch policy {
+        case "regular":    target = .regular
+        case "accessory":  target = .accessory
+        case "prohibited": target = .prohibited
+        default:           target = .regular
+        }
+        // Idempotent — AppKit short-circuits if policy is unchanged.
+        NSApp.setActivationPolicy(target)
+        if target == .regular {
+          // Bring the menu bar up immediately; without an activation
+          // step macOS waits for the next click before drawing it.
+          NSApp.activate(ignoringOtherApps: true)
+        }
+        result(nil)
       case "setVibrancy":
         // Flutter sends "light" or "dark"; we map to a macOS material
         // that plays nicely with the Liquid-Glass window chrome.
@@ -177,6 +206,19 @@ class MainFlutterWindow: NSWindow, NSWindowDelegate {
 
     self.delegate = self
     self.hidesOnDeactivate = false
+
+    // Opt out of macOS native fullscreen. Flow is a menu-bar-first app;
+    // native fullscreen auto-hides the system menu bar, which makes our
+    // PlatformMenuBar effectively invisible and breaks the dictation
+    // workflow (no menu → no Cmd-Q, no About, etc. without a hover).
+    // Removing .fullScreenPrimary + adding .fullScreenNone turns the
+    // green traffic-light button into a zoom (maximize) button and
+    // greys out View → Enter Full Screen, matching the behaviour of
+    // other tray-resident apps like Alfred / Raycast.
+    var behavior = self.collectionBehavior
+    behavior.remove(.fullScreenPrimary)
+    behavior.insert(.fullScreenNone)
+    self.collectionBehavior = behavior
 
     // Shift the native traffic-lights into the Flutter-drawn sidebar
     // pane. Apple's own apps (Finder, Mail) as well as Slack / Figma /
@@ -236,9 +278,22 @@ class MainFlutterWindow: NSWindow, NSWindowDelegate {
     ))
   }
 
-  // Intercept close button — hide instead of destroy
+  // Intercept close button — hide instead of destroy. We also drop the
+  // activation policy to .accessory so Flow stops showing a menu bar
+  // and Dock icon while only the tray remains.
   func windowShouldClose(_ sender: NSWindow) -> Bool {
     self.orderOut(nil)
+    NSApp.setActivationPolicy(.accessory)
     return false
+  }
+
+  // Becoming the key window is the most reliable signal that the user
+  // is interacting with the Flutter surface — promote to .regular so
+  // the native menu bar is drawn. Re-entry from the tray funnels
+  // through makeKeyAndOrderFront which triggers this hook.
+  func windowDidBecomeKey(_ notification: Notification) {
+    if NSApp.activationPolicy() != .regular {
+      NSApp.setActivationPolicy(.regular)
+    }
   }
 }

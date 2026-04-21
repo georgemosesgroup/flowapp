@@ -9,6 +9,10 @@ class HotkeyService {
   VoidCallback? onToggle;
   VoidCallback? onHoldStart;
   VoidCallback? onHoldEnd;
+  /// Fires whenever the user presses Escape anywhere on the system
+  /// while the hotkey listener is running. AppShell uses this to
+  /// abort an in-flight dictation without transcribing.
+  VoidCallback? onCancel;
   void Function(String displayName, int keyCode, int modifiers)? onRecorded;
   void Function(String displayName)? onRecordingUpdate;
 
@@ -62,6 +66,9 @@ class HotkeyService {
       case 'onHotkeyUp':
         onHoldEnd?.call();
         break;
+      case 'onCancelDictation':
+        onCancel?.call();
+        break;
       case 'onHotkeyRecorded':
         final args = call.arguments as Map;
         final display = args['displayName'] as String;
@@ -81,10 +88,12 @@ class HotkeyService {
     required VoidCallback onToggle,
     VoidCallback? onHoldStart,
     VoidCallback? onHoldEnd,
+    VoidCallback? onCancel,
   }) async {
     this.onToggle = onToggle;
     this.onHoldStart = onHoldStart;
     this.onHoldEnd = onHoldEnd;
+    this.onCancel = onCancel;
 
     if (kIsWeb) return; // No native hotkeys in the browser.
 

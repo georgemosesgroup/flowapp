@@ -28,3 +28,33 @@ class ToolbarInset extends InheritedWidget {
   @override
   bool updateShouldNotify(ToolbarInset old) => old.leftInset != leftInset;
 }
+
+/// Width of the current sidebar column, in logical pixels. Published by
+/// `AppShell` as the sidebar expands/collapses so overlay UI (toasts,
+/// popovers) can align themselves over the content area rather than the
+/// whole window.
+///
+/// Separate from [ToolbarInset] because that inset describes header
+/// padding (a small gutter near the traffic-lights), not the sidebar
+/// width itself — the two values differ whenever the sidebar is pinned.
+class SidebarMetrics extends InheritedWidget {
+  final double sidebarWidth;
+
+  const SidebarMetrics({
+    super.key,
+    required this.sidebarWidth,
+    required super.child,
+  });
+
+  static SidebarMetrics? maybeOf(BuildContext context) =>
+      context.dependOnInheritedWidgetOfExactType<SidebarMetrics>();
+
+  /// Convenience: sidebar width at the given context, or 0 when no
+  /// [SidebarMetrics] ancestor is installed (pre-login screens, tests).
+  static double widthOf(BuildContext context) =>
+      maybeOf(context)?.sidebarWidth ?? 0;
+
+  @override
+  bool updateShouldNotify(SidebarMetrics old) =>
+      old.sidebarWidth != sidebarWidth;
+}

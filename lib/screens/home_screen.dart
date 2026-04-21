@@ -155,6 +155,15 @@ class _HomeScreenState extends State<HomeScreen> {
     super.initState();
     widget.onDictationCallback(_onDictationComplete);
     _loadHistory();
+    // FlowTokens are static getters driven by FlowThemeController.
+    // Since MaterialApp.home doesn't tear down its subtree on theme
+    // swaps, we need to manually listen here or the sticky-bar glass
+    // wash + chip backgrounds freeze in the previous brightness.
+    FlowThemeController.instance.addListener(_onThemeChanged);
+  }
+
+  void _onThemeChanged() {
+    if (mounted) setState(() {});
   }
 
   @override
@@ -209,6 +218,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   void dispose() {
+    FlowThemeController.instance.removeListener(_onThemeChanged);
     _undoTicker?.cancel();
     _scrollController.dispose();
     super.dispose();
@@ -1024,30 +1034,20 @@ class _RecentStickyHeader extends SliverPersistentHeaderDelegate {
     );
 
     // Full-width frosted-glass strip — same recipe Apple uses for
-    // Safari/Music toolbars. Two layers stacked:
-    //   [0] BackdropFilter band that blurs dictation cards scrolling
-    //       underneath + dark tint + bottom hairline → reads as an
-    //       elevated toolbar.
-    //   [1] The chips on top, fixed position.
-    // The band fades in as soon as `overlapsContent` flips — chips
-    // themselves never animate, so their position doesn't shift.
-    final isDark = brightness == Brightness.dark;
-    // Band tint has to match what the TRANSPARENT top-header composes
-    // down to (native NSVisualEffectView.sidebar + tintView). The
-    // previous values pinned to `bgSurfaceOpaque` on both sides —
-    // which is pure chrome-base (0xFFFFFFFF light / 0xFF111114 dark)
-    // — read noticeably darker than the live header in BOTH themes,
-    // because the live header never actually paints those endpoints:
-    // it shows the .sidebar material (mid-gray) tinted by 5% white or
-    // 62% black, which lands closer to macOS systemGray6.
-    //
-    // These values are picked to match that native composite so the
-    // band visually fuses with the header and the bottom hairline is
-    // the only cue that the bar is pinned. Tuned by eye against the
-    // screenshots the user shared.
-    final bandTint = isDark
-        ? const Color(0xFF1D1D1F) // dark: matches .sidebar + 62% black
-        : const Color(0xFFEBEBED); // light: matches .sidebar + 5% white
+    // Safari/Music toolbars. We rely on Flutter's BackdropFilter to
+    // blur whatever content is scrolling underneath and add a faint
+    // translucent wash on top so the chips stay legible. The old
+    // approach painted a solid tinted Container, which read as a
+    // distinct light/dark stripe and clashed with the Liquid-Glass
+    // window surface.
+
+    // Translucent wash stacked over the blur. We pull the elevated
+    // surface token rather than hardcoding black/white so the bar
+    // auto-tracks the theme (the earlier hardcoded values left dark
+    // mode looking like a white strip over a dark window). Alpha is
+    // kept modest — Apple's own toolbars (Safari, Mail) read as tinted
+    // glass, not a painted strip.
+    final bandWash = FlowTokens.bgElevated.withValues(alpha: 0.92);
 
     // Pinning triggers on any non-zero scroll offset. Using
     // `overlapsContent` was unreliable — it only flipped when a
@@ -1061,21 +1061,24 @@ class _RecentStickyHeader extends SliverPersistentHeaderDelegate {
     return Stack(
       fit: StackFit.expand,
       children: [
-        // — Solid body-color band with hairline on the bottom.
-        //   Mirrors how the top Home-toolbar paints itself (opaque
-        //   canvas + bottom stroke once scrolling engages). Fades in
-        //   only once scroll overlaps the header so the chips sit
-        //   flush with the list header at rest. Container (not
-        //   DecoratedBox) so the fill stretches to the full Stack
-        //   extent instead of collapsing to zero. —
+        // — Frosted-glass band. ClipRect is load-bearing: without it
+        //   the BackdropFilter blur leaks past the sliver's bounds and
+        //   tints content above/below the sticky row. The band fades
+        //   in only once scrolling engages so the chips sit flush with
+        //   the list header at rest. —
         AnimatedOpacity(
           duration: FlowTokens.durFast,
           opacity: scrolled ? 1.0 : 0.0,
-          child: Container(
-            decoration: BoxDecoration(
-              color: bandTint,
-              border: Border(
-                bottom: BorderSide(color: bandHairline, width: 0.5),
+          child: ClipRect(
+            child: BackdropFilter(
+              filter: ui.ImageFilter.blur(sigmaX: 72, sigmaY: 72),
+              child: Container(
+                decoration: BoxDecoration(
+                  color: bandWash,
+                  border: Border(
+                    bottom: BorderSide(color: bandHairline, width: 0.5),
+                  ),
+                ),
               ),
             ),
           ),

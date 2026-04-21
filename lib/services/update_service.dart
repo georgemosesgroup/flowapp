@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
@@ -216,6 +217,123 @@ class UpdateService extends ChangeNotifier {
     if (uri == null) return false;
     try {
       return await launchUrl(uri, mode: LaunchMode.externalApplication);
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// Stream the DMG to a temp file, reporting progress via [onProgress]
+  /// which receives (bytesReceived, contentLength). Content length is
+  /// -1 when the server didn't send Content-Length (rare; fall back to
+  /// indeterminate UI in that case).
+  ///
+  /// Returns the absolute path to the downloaded file, or null on
+  /// failure. Cancellation is cooperative — pass a completed
+  /// [cancelToken] Completer to abort; the function returns null and
+  /// cleans up the partial file.
+  ///
+  /// Kept in UpdateService (not a separate DownloadService) because all
+  /// the state we need — which release, which URL — already lives here
+  /// as `_available`.
+  Future<String?> downloadDmg({
+    required void Function(int received, int total) onProgress,
+    Completer<void>? cancelToken,
+  }) async {
+    final info = _available;
+    if (info == null || info.url.isEmpty) return null;
+
+    final uri = Uri.tryParse(info.url);
+    if (uri == null) return null;
+
+    // Temp dir is fine for a DMG — the OS nukes it on logout, and once
+    // the user has dragged Flow into /Applications they don't need the
+    // installer file anyway. Using a stable name per release makes
+    // repeated retries idempotent.
+    final tmpDir = Directory.systemTemp;
+    final safeName = info.url.split('/').last.split('?').first;
+    final fileName = safeName.isNotEmpty ? safeName : 'flow-${info.build}.dmg';
+    final target = File('${tmpDir.path}${Platform.pathSeparator}$fileName');
+
+    IOSink? sink;
+    http.Client? client;
+    http.StreamedResponse? response;
+    try {
+      // Best-effort cleanup so a prior partial/failed download doesn't
+      // hand back a truncated file.
+      if (await target.exists()) {
+        await target.delete();
+      }
+
+      client = http.Client();
+      final request = http.Request('GET', uri);
+      response = await client.send(request);
+
+      if (response.statusCode != 200) {
+        return null;
+      }
+
+      final total = response.contentLength ?? -1;
+      var received = 0;
+      onProgress(received, total);
+
+      sink = target.openWrite();
+      final completer = Completer<void>();
+      late StreamSubscription<List<int>> sub;
+      sub = response.stream.listen(
+        (chunk) {
+          if (cancelToken?.isCompleted == true) {
+            sub.cancel();
+            if (!completer.isCompleted) completer.complete();
+            return;
+          }
+          sink!.add(chunk);
+          received += chunk.length;
+          onProgress(received, total);
+        },
+        onDone: () {
+          if (!completer.isCompleted) completer.complete();
+        },
+        onError: (Object e) {
+          if (!completer.isCompleted) completer.completeError(e);
+        },
+        cancelOnError: true,
+      );
+
+      await completer.future;
+      await sink.flush();
+      await sink.close();
+      sink = null;
+
+      if (cancelToken?.isCompleted == true) {
+        if (await target.exists()) {
+          await target.delete();
+        }
+        return null;
+      }
+      return target.path;
+    } catch (_) {
+      try {
+        await sink?.close();
+      } catch (_) {}
+      try {
+        if (await target.exists()) {
+          await target.delete();
+        }
+      } catch (_) {}
+      return null;
+    } finally {
+      client?.close();
+    }
+  }
+
+  /// Open a downloaded DMG in Finder so the user can drag the new
+  /// Flow.app into /Applications. Returns false if the `open` process
+  /// failed — most likely the file was deleted between download and
+  /// click.
+  Future<bool> revealDmgInFinder(String path) async {
+    try {
+      final result = await Process.run('open', [path]);
+      return result.exitCode == 0;
     } catch (_) {
       return false;
     }

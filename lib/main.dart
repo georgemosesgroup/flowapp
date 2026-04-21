@@ -7,6 +7,7 @@ import 'screens/account_picker_screen.dart';
 import 'screens/app_shell.dart';
 import 'screens/login_screen.dart';
 import 'screens/permissions_screen.dart';
+import 'services/activation_policy_service.dart';
 import 'services/auth_service.dart';
 import 'services/speech_service.dart';
 import 'services/storage_service.dart';
@@ -39,6 +40,13 @@ void main() async {
       await windowManager.show();
       await windowManager.focus();
     });
+
+    // LSUIElement=true boots us as a tray-only agent (no Dock icon, no
+    // menu bar). Promote to .regular now that the window is on screen
+    // so the native PlatformMenuBar strip actually renders. Subsequent
+    // show/hide toggles are driven from the Swift side (windowShouldClose
+    // and StatusBarHelper).
+    await ActivationPolicyService.regular();
   }
 
   runApp(const FlowApp());

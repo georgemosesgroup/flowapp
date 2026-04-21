@@ -106,34 +106,38 @@ class FlowMenuBar extends StatelessWidget {
 
   Future<void> _checkForUpdates() async {
     final service = UpdateService.current;
-    final context = navigatorKey.currentContext;
-    if (service == null || context == null) return;
+    // navigatorKey.currentContext points at the Navigator widget, but
+    // our Overlay lives *inside* that Navigator — Overlay.maybeOf from
+    // the Navigator's own context returns null and FlowToast silently
+    // becomes a no-op. Grab the OverlayState.context instead: it's a
+    // descendant of the Overlay, so look-ups resolve correctly.
+    final overlayCtx = navigatorKey.currentState?.overlay?.context;
+    if (service == null || overlayCtx == null) return;
 
     FlowToast.info(
-      context,
+      overlayCtx,
       'Checking for updates\u2026',
       duration: const Duration(seconds: 2),
     );
 
     await service.checkNow();
 
-    final freshContext = navigatorKey.currentContext;
-    if (freshContext == null) return;
-    // freshContext is re-fetched from the GlobalKey *after* the await,
-    // so it reflects the live tree — safe to use even though the lint
-    // can't prove that statically.
+    final freshCtx = navigatorKey.currentState?.overlay?.context;
+    if (freshCtx == null) return;
+    // freshCtx is re-fetched after the await from the live Overlay,
+    // so it reflects the current tree — the lint can't prove that.
     if (service.available == null) {
       final v = service.currentVersion.isNotEmpty
           ? ' (${service.currentVersion})'
           : '';
       // ignore: use_build_context_synchronously
-      FlowToast.success(freshContext, 'You\u2019re up to date$v');
+      FlowToast.success(freshCtx, 'You\u2019re up to date$v');
     } else {
       // Banner also surfaces the prompt; toast just confirms the check
       // landed in case the user's eyes were on the menu bar.
       final msg = 'Flow ${service.available!.version} is available';
       // ignore: use_build_context_synchronously
-      FlowToast.info(freshContext, msg, duration: const Duration(seconds: 3));
+      FlowToast.info(freshCtx, msg, duration: const Duration(seconds: 3));
     }
   }
 

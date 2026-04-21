@@ -1,3 +1,5 @@
+import 'dart:ui';
+
 import 'package:flutter/material.dart';
 
 import '../services/update_service.dart';
@@ -50,12 +52,10 @@ class _UpdateBannerState extends State<UpdateBanner> {
 
   @override
   Widget build(BuildContext context) {
-    // systemBlue-tinted info band — tonal, not alarming. For forced
-    // updates we bump to the warningSubtle wash (orange) so the user
-    // clocks that it's non-optional without us going full red.
-    final tint = widget.forceUpdate
-        ? FlowTokens.warningSubtle
-        : FlowTokens.infoSubtle;
+    // Accent drives the icon block on the left of the pill. Orange for
+    // forced updates (non-dismissable, more urgent vibe), blue for
+    // routine updates. The pill body itself stays on bgElevated — a
+    // coloured wash would fight with the glass surface.
     final accent =
         widget.forceUpdate ? FlowTokens.systemOrange : FlowTokens.systemBlue;
 
@@ -70,22 +70,33 @@ class _UpdateBannerState extends State<UpdateBanner> {
     final trimmedNotes = widget.info.notes.trim();
     final showNotes = trimmedNotes.isNotEmpty;
 
-    return Container(
-      decoration: BoxDecoration(
-        color: tint,
-        border: Border(
-          bottom: BorderSide(
-            color: FlowTokens.strokeDivider,
-            width: 0.5,
+    // Floating glass pill anchored at the bottom of the content area
+    // by the parent Stack. Rounded, shadowed, blurred — reads as a
+    // macOS-native notification, not a Material bar. `tint` is still
+    // used for the accent block on the left, not the whole surface.
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(FlowTokens.radiusLg),
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 24, sigmaY: 24),
+        child: Container(
+          decoration: BoxDecoration(
+            color: FlowTokens.bgElevated.withValues(alpha: 0.88),
+            borderRadius: BorderRadius.circular(FlowTokens.radiusLg),
+            border: Border.all(color: FlowTokens.strokeSubtle, width: 0.5),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.24),
+                blurRadius: 24,
+                offset: const Offset(0, 10),
+              ),
+            ],
           ),
-        ),
-      ),
-      padding: const EdgeInsets.symmetric(
-        horizontal: FlowTokens.space16,
-        vertical: FlowTokens.space8,
-      ),
-      child: Row(
-        children: [
+          padding: const EdgeInsets.symmetric(
+            horizontal: FlowTokens.space16,
+            vertical: FlowTokens.space12,
+          ),
+          child: Row(
+            children: [
           // Accent dot + headline — compact like a macOS info bar.
           Container(
             width: 26,
@@ -159,6 +170,8 @@ class _UpdateBannerState extends State<UpdateBanner> {
             ),
           ],
         ],
+      ),
+        ),
       ),
     );
   }

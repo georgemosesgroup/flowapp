@@ -781,38 +781,14 @@ class _AppShellState extends State<AppShell> {
           Expanded(
             child: ToolbarInset(
               leftInset: 0,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
+              // Stack lets the floating UpdateBanner sit above the
+              // screen content without pushing the layout. The old
+              // layout was a Column with a full-width strip at the top,
+              // which read as a Material banner — visually loud and
+              // not on-brand for a Liquid-Glass shell.
+              child: Stack(
                 children: [
-                  // "New version available" strip. Sits above every
-                  // screen's toolbar so the prompt is visible from any
-                  // nav target, not just Home. AnimatedSize makes the
-                  // banner slide in/out smoothly as the service flips
-                  // between null and an info payload, rather than
-                  // popping into place.
-                  ListenableBuilder(
-                    listenable: _updateService,
-                    builder: (context, _) {
-                      final info = _updateService.available;
-                      return AnimatedSize(
-                        duration: FlowTokens.durBase,
-                        curve: FlowTokens.easeStandard,
-                        alignment: Alignment.topCenter,
-                        child: info == null
-                            ? const SizedBox(
-                                width: double.infinity, height: 0)
-                            : UpdateBanner(
-                                info: info,
-                                forceUpdate: _updateService.isForceUpdate,
-                                onUpdate: () => _showUpdateDialog(info),
-                                onDismiss: _updateService.isForceUpdate
-                                    ? null
-                                    : _updateService.dismiss,
-                              ),
-                      );
-                    },
-                  ),
-                  Expanded(
+                  Positioned.fill(
                     child: _showAccount
                         ? AccountScreen(
                             authService: widget.authService,
@@ -822,6 +798,70 @@ class _AppShellState extends State<AppShell> {
                                 setState(() => _showAccount = false),
                           )
                         : _buildContent(),
+                  ),
+                  // Floating "new version available" pill. Anchors
+                  // bottom-center of the content area so it doesn't
+                  // collide with the sidebar and scrolls independently
+                  // of list position — always on screen until dismissed
+                  // or the update is taken.
+                  Positioned(
+                    left: 0,
+                    right: 0,
+                    bottom: 24,
+                    child: ListenableBuilder(
+                      listenable: _updateService,
+                      builder: (context, _) {
+                        final info = _updateService.available;
+                        return IgnorePointer(
+                          ignoring: info == null,
+                          child: AnimatedSwitcher(
+                            duration: FlowTokens.durBase,
+                            switchInCurve: FlowTokens.easeStandard,
+                            switchOutCurve: FlowTokens.easeStandard,
+                            transitionBuilder: (child, animation) {
+                              return FadeTransition(
+                                opacity: animation,
+                                child: SlideTransition(
+                                  position: Tween<Offset>(
+                                    begin: const Offset(0, 0.3),
+                                    end: Offset.zero,
+                                  ).animate(animation),
+                                  child: child,
+                                ),
+                              );
+                            },
+                            child: info == null
+                                ? const SizedBox.shrink(
+                                    key: ValueKey('no-update'))
+                                : Padding(
+                                    key: ValueKey('update-${info.build}'),
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: FlowTokens.space24,
+                                    ),
+                                    child: Align(
+                                      alignment: Alignment.bottomCenter,
+                                      child: ConstrainedBox(
+                                        constraints: const BoxConstraints(
+                                          maxWidth: 540,
+                                        ),
+                                        child: UpdateBanner(
+                                          info: info,
+                                          forceUpdate:
+                                              _updateService.isForceUpdate,
+                                          onUpdate: () =>
+                                              _showUpdateDialog(info),
+                                          onDismiss:
+                                              _updateService.isForceUpdate
+                                                  ? null
+                                                  : _updateService.dismiss,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                          ),
+                        );
+                      },
+                    ),
                   ),
                 ],
               ),

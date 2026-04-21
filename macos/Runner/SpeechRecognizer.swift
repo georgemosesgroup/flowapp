@@ -876,11 +876,15 @@ class StatusBarHelper: NSObject, NSMenuDelegate {
     }
 
     func menuWillOpen(_ menu: NSMenu) {
-        // Update Show/Hide
+        // Keep the first item fixed at "Show Flow" — tapping it always
+        // brings the window to the front regardless of current state.
+        // The old Hide/Show toggle caused accidental hides (user opens
+        // the tray menu looking for Settings, clicks the wrong item,
+        // loses the window) and adds no value: Cmd-H / red traffic
+        // light already cover "make the window go away".
         if let item = menu.items.first {
-            let isVisible = NSApp.windows.contains(where: { $0 is MainFlutterWindow && $0.isVisible })
-            item.title = isVisible ? "Hide Flow" : "Show Flow"
-            item.action = isVisible ? #selector(hideWindow) : #selector(showWindow)
+            item.title = "Show Flow"
+            item.action = #selector(showWindow)
             item.target = self
         }
 
@@ -929,13 +933,33 @@ class StatusBarHelper: NSObject, NSMenuDelegate {
             position: .unspecified
         ).devices
 
+        // Match the ordering used by the Settings → Microphone chips:
+        // system default pinned at the top, everyone else alphabetical.
+        // Without this the tray menu is whatever random order macOS
+        // hands us — BlackHole, VB-Cable and Zoom typically float to
+        // the top, which confused the user testing the 1.0.2 build.
+        let defaultId = AVCaptureDevice.default(for: .audio)?.uniqueID
+        var sorted = devices.sorted { a, b in
+            a.localizedName.localizedCaseInsensitiveCompare(b.localizedName)
+                == .orderedAscending
+        }
+        if let defaultId,
+           let idx = sorted.firstIndex(where: { $0.uniqueID == defaultId }) {
+            let d = sorted.remove(at: idx)
+            sorted.insert(d, at: 0)
+        }
+
         let currentId = UserDefaults.standard.string(forKey: "flutter.selected_mic_id") ?? ""
 
-        for device in devices {
+        for device in sorted {
             let item = NSMenuItem(title: device.localizedName, action: #selector(selectMicrophone(_:)), keyEquivalent: "")
             item.target = self
             item.representedObject = device.uniqueID
-            item.state = (device.uniqueID == currentId || (currentId.isEmpty && device == devices.first)) ? .on : .off
+            // Checkmark logic: either the user explicitly picked this
+            // one, or they haven't picked anything and this is the
+            // system default (which is now guaranteed to be `first`).
+            item.state = (device.uniqueID == currentId
+                || (currentId.isEmpty && device.uniqueID == defaultId)) ? .on : .off
             micMenu.addItem(item)
         }
 

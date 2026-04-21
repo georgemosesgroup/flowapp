@@ -222,19 +222,6 @@ class MainFlutterWindow: NSWindow, NSWindowDelegate {
     self.delegate = self
     self.hidesOnDeactivate = false
 
-    // Opt out of macOS native fullscreen. Flow is a menu-bar-first app;
-    // native fullscreen auto-hides the system menu bar, which makes our
-    // PlatformMenuBar effectively invisible and breaks the dictation
-    // workflow (no menu → no Cmd-Q, no About, etc. without a hover).
-    // Removing .fullScreenPrimary + adding .fullScreenNone turns the
-    // green traffic-light button into a zoom (maximize) button and
-    // greys out View → Enter Full Screen, matching the behaviour of
-    // other tray-resident apps like Alfred / Raycast.
-    var behavior = self.collectionBehavior
-    behavior.remove(.fullScreenPrimary)
-    behavior.insert(.fullScreenNone)
-    self.collectionBehavior = behavior
-
     // Shift the native traffic-lights into the Flutter-drawn sidebar
     // pane. Apple's own apps (Finder, Mail) as well as Slack / Figma /
     // Tower do this by observing the title-bar container's
@@ -293,22 +280,15 @@ class MainFlutterWindow: NSWindow, NSWindowDelegate {
     ))
   }
 
-  // Intercept close button — hide instead of destroy. We also drop the
-  // activation policy to .accessory so Flow stops showing a menu bar
-  // and Dock icon while only the tray remains.
+  // Intercept close button — hide instead of destroy. The app keeps
+  // running as a regular Dock app; the user can bring the window back
+  // via the tray menu or by clicking the Dock icon
+  // (AppDelegate.applicationShouldHandleReopen). Don't flip activation
+  // policy here — downgrading to .accessory during a hide caused the
+  // native traffic-light buttons to render at the compact "palette"
+  // size and intercept clicks strangely on macOS 26.
   func windowShouldClose(_ sender: NSWindow) -> Bool {
     self.orderOut(nil)
-    NSApp.setActivationPolicy(.accessory)
     return false
-  }
-
-  // Becoming the key window is the most reliable signal that the user
-  // is interacting with the Flutter surface — promote to .regular so
-  // the native menu bar is drawn. Re-entry from the tray funnels
-  // through makeKeyAndOrderFront which triggers this hook.
-  func windowDidBecomeKey(_ notification: Notification) {
-    if NSApp.activationPolicy() != .regular {
-      NSApp.setActivationPolicy(.regular)
-    }
   }
 }
